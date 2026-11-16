@@ -226,6 +226,7 @@ class _BridgeTask:
         self.is_json: bool = is_json
         self.created_at: float = time.time()
         self.dispatched_at: Optional[float] = None
+        self.last_heartbeat_at: Optional[float] = None
         self.event: threading.Event = threading.Event()
         self.result_content: Optional[str] = None
         self.error_message: Optional[str] = None
@@ -275,16 +276,37 @@ class WebBridgeManager:
         return task
 
     def claim_next_task_for_userscript(self) -> Optional[Dict[str, Any]]:
-        """Return next undispatched task (or re-dispatch if timed out > 90s without result)."""
+        """Return next undispatched task (only re-dispatch if no heartbeat/activity for > 180s)."""
         self.record_userscript_poll()
         now = time.time()
         with self._lock:
             for task in self._tasks:
                 if not task.event.is_set():
-                    if task.dispatched_at is None or (now - task.dispatched_at) > 120.0:
+                    last_active = max(
+                        task.dispatched_at or 0.0,
+                        task.last_heartbeat_at or 0.0,
+                    )
+                    if task.dispatched_at is None or (now - last_active) > 180.0:
                         task.dispatched_at = now
+                        task.last_heartbeat_at = now
                         return task.to_dict()
         return None
+
+    def record_heartbeat(self, task_id: str) -> bool:
+        """Keep an active task alive while Grok Web is still streaming."""
+        self.record_userscript_poll()
+        now = time.time()
+        with self._lock:
+            task = self._tasks_by_id.get(task_id)
+            if not task:
+                for candidate in self._tasks:
+                    if not candidate.event.is_set():
+                        task = candidate
+                        break
+            if not task or task.event.is_set():
+                return False
+            task.last_heartbeat_at = now
+            return True
 
     def peek_active_task(self) -> Optional[Dict[str, Any]]:
         """Peek at the earliest unfinished task without marking it dispatched (used by Dashboard UI)."""
@@ -392,6 +414,23 @@ class WebBridgeManager:
 
                 def do_POST(self) -> None:
                     parsed = urlparse(self.path)
+                    if parsed.path == "/heartbeat":
+                        length = int(self.headers.get("Content-Length", "0") or "0")
+                        raw = self.rfile.read(length).decode("utf-8", errors="replace") if length > 0 else "{}"
+                        try:
+                            data = json.loads(raw)
+                        except Exception:
+                            data = {}
+                        task_id = str(data.get("id", "")).strip()
+                        ok = manager.record_heartbeat(task_id)
+                        resp_bytes = json.dumps({"ok": ok}).encode("utf-8")
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self._send_cors_headers()
+                        self.end_headers()
+                        self.wfile.write(resp_bytes)
+                        return
+
                     if parsed.path == "/result":
                         length = int(self.headers.get("Content-Length", "0") or "0")
                         raw = self.rfile.read(length).decode("utf-8", errors="replace") if length > 0 else "{}"
@@ -520,12 +559,24 @@ def execute_web_grok_request(
             )
 
     try:
-        completed = task.event.wait(timeout=timeout)
-        if not completed:
-            raise TimeoutError(
-                f"Waktu tunggu Grok Web Bridge habis ({timeout}s). "
-                f"Pastikan tab grok.com terbuka dengan Userscript aktif atau kirim balasan melalui {bridge_url}."
+        start_time = time.time()
+        max_total_wait = max(timeout, 900)
+        inactivity_limit = max(240, min(timeout, 420))
+        while not task.event.is_set():
+            task.event.wait(timeout=5.0)
+            if task.event.is_set():
+                break
+            now = time.time()
+            last_activity = max(
+                task.created_at,
+                task.dispatched_at or 0.0,
+                task.last_heartbeat_at or 0.0,
             )
+            if (now - last_activity) >= inactivity_limit or (now - start_time) >= max_total_wait:
+                raise TimeoutError(
+                    f"Waktu tunggu Grok Web Bridge habis ({int(now - start_time)}s). "
+                    f"Pastikan tab grok.com aktif di layar (split-screen di HP) atau kirim balasan lewat {bridge_url}."
+                )
         if task.error_message:
             raise RuntimeError(f"Grok Web Bridge melaporkan kendala: {task.error_message}")
         if not task.result_content or not task.result_content.strip():

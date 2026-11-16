@@ -192,6 +192,50 @@ class NovelProject:
         """Path to chapter scene beats json file."""
         return self.chapters_dir / f"chapter_{chapter_num:02d}_beats.json"
 
+    def get_chapter_progress_file(self, chapter_num: int) -> Path:
+        """Path to incremental beat-by-beat drafting checkpoint file."""
+        return self.chapters_dir / f"chapter_{chapter_num:02d}_progress.json"
+
+    def save_chapter_beat_progress(
+        self,
+        chapter_num: int,
+        completed_beats: int,
+        total_beats: int,
+        parts: List[str],
+    ) -> None:
+        """Save incremental beat-by-beat prose progress so interrupted runs resume without restarting from Beat 1."""
+        prog_file = self.get_chapter_progress_file(chapter_num)
+        payload = {
+            "chapter_number": chapter_num,
+            "completed_beats": completed_beats,
+            "total_beats": total_beats,
+            "parts": parts,
+        }
+        with open(prog_file, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+
+    def get_chapter_beat_progress(self, chapter_num: int) -> Optional[Dict[str, Any]]:
+        """Read incremental beat-by-beat progress if a chapter stopped mid-way."""
+        prog_file = self.get_chapter_progress_file(chapter_num)
+        if prog_file.exists():
+            try:
+                with open(prog_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict) and data.get("parts"):
+                    return data
+            except Exception:
+                pass
+        return None
+
+    def clear_chapter_beat_progress(self, chapter_num: int) -> None:
+        """Remove incremental checkpoint once all beats in a chapter are finished."""
+        prog_file = self.get_chapter_progress_file(chapter_num)
+        if prog_file.exists():
+            try:
+                prog_file.unlink()
+            except Exception:
+                pass
+
     def get_chapter_audit_file(self, chapter_num: int) -> Path:
         """Path to chapter audit report json file."""
         return self.chapters_dir / f"chapter_{chapter_num:02d}_audit.json"

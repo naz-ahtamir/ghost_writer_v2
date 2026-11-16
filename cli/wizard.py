@@ -70,22 +70,25 @@ def resume_project_foundation(
     need_world = force_all or not project.is_world_bible_complete()
     if need_world:
         architect = ArchitectAgent(llm)
-        try:
-            with console.status("[bold cyan]🏛️ Architect Agent sedang merancang Worldbuilding & Lore dunia cerita...[/bold cyan]"):
-                world_bible = architect.generate_world_bible(project)
-            console.print(Panel(
-                f"[bold]Latar Utama:[/bold] {world_bible.get('setting_name')}\n"
-                f"[bold]Konsep Inti:[/bold] {world_bible.get('core_concept')}\n"
-                f"[bold]Atmosfer:[/bold] {world_bible.get('atmosphere')}\n"
-                f"[bold]Aturan / Sistem:[/bold] {world_bible.get('rules_and_systems')}\n"
-                f"[bold]Sejarah Masa Lalu:[/bold] {world_bible.get('historical_lore')}",
-                title="🏛️ Hasil Worldbuilding (Architect Agent)",
-                border_style="green",
-            ))
-        except Exception as e:
-            console.print(f"[bold red]❌ Terjadi kendala saat merancang Worldbuilding:[/bold red] {e}")
-            console.print("[yellow]Data konsep proyek Anda tetap tersimpan. Anda dapat melanjutkannya kembali tanpa harus mengulang dari awal.[/yellow]")
-            return False
+        while True:
+            try:
+                with console.status("[bold cyan]🏛️ Architect Agent sedang merancang Worldbuilding & Lore dunia cerita...[/bold cyan]"):
+                    world_bible = architect.generate_world_bible(project)
+                console.print(Panel(
+                    f"[bold]Latar Utama:[/bold] {world_bible.get('setting_name')}\n"
+                    f"[bold]Konsep Inti:[/bold] {world_bible.get('core_concept')}\n"
+                    f"[bold]Atmosfer:[/bold] {world_bible.get('atmosphere')}\n"
+                    f"[bold]Aturan / Sistem:[/bold] {world_bible.get('rules_and_systems')}\n"
+                    f"[bold]Sejarah Masa Lalu:[/bold] {world_bible.get('historical_lore')}",
+                    title="🏛️ Hasil Worldbuilding (Architect Agent)",
+                    border_style="green",
+                ))
+                break
+            except Exception as e:
+                console.print(f"[bold red]❌ Terjadi kendala saat merancang Worldbuilding:[/bold red] {e}")
+                if not Confirm.ask("[bold yellow]🔄 Coba lagi tahap Worldbuilding sekarang? (Data proyek tetap tersimpan)[/bold yellow]", default=True):
+                    console.print("[yellow]Data konsep proyek Anda tetap tersimpan. Anda dapat melanjutkannya kembali tanpa harus mengulang dari awal.[/yellow]")
+                    return False
     else:
         console.print(f"[dim green]✓ World Bible sudah ada ('{project.world_bible.get('setting_name', 'Setting')}'), mempertahankan data ini.[/dim green]")
 
@@ -94,15 +97,18 @@ def resume_project_foundation(
     if need_chars:
         time.sleep(2)
         char_master = CharacterMasterAgent(llm)
-        try:
-            with console.status("[bold cyan]👥 Character Master Agent sedang mendesain profil psikologis para tokoh...[/bold cyan]"):
-                characters = char_master.generate_characters(project)
-            console.print("\n")
-            display_characters_table(characters)
-        except Exception as e:
-            console.print(f"[bold red]❌ Terjadi kendala saat merancang Karakter:[/bold red] {e}")
-            console.print("[yellow]World Bible Anda sudah berhasil disimpan. Anda dapat melanjutkan tahap Karakter kapan saja tanpa mengulang dari awal.[/yellow]")
-            return False
+        while True:
+            try:
+                with console.status("[bold cyan]👥 Character Master Agent sedang mendesain profil psikologis para tokoh...[/bold cyan]"):
+                    characters = char_master.generate_characters(project)
+                console.print("\n")
+                display_characters_table(characters)
+                break
+            except Exception as e:
+                console.print(f"[bold red]❌ Terjadi kendala saat merancang Karakter:[/bold red] {e}")
+                if not Confirm.ask("[bold yellow]🔄 Coba lagi tahap Karakter sekarang? (World Bible sudah tersimpan aman)[/bold yellow]", default=True):
+                    console.print("[yellow]World Bible Anda sudah berhasil disimpan. Anda dapat melanjutkan tahap Karakter kapan saja tanpa mengulang dari awal.[/yellow]")
+                    return False
     else:
         console.print(f"[dim green]✓ Profil Karakter sudah ada ({len(project.characters)} tokoh), mempertahankan data ini.[/dim green]")
 
@@ -111,22 +117,25 @@ def resume_project_foundation(
     if need_outline:
         time.sleep(2)
         outliner = OutlinerAgent(llm)
-        try:
-            target_chapters = meta.get("target_chapters", 12)
-            with console.status(f"[bold cyan]🗺️ Outliner Agent sedang merancang alur Three-Act dan plot {target_chapters} bab...[/bold cyan]"):
-                outline = outliner.generate_outline(project)
-            console.print("\n")
-            console.print(Panel(
-                f"[bold]Sinopsis Lengkap:[/bold]\n{outline.get('overall_synopsis', '')}\n\n"
-                f"[bold]Struktur Babak (Narrative Arc):[/bold]\n{outline.get('narrative_arc', '')}",
-                title="🗺️ Rancangan Alur Cerita Makro",
-                border_style="magenta",
-            ))
-            display_chapters_table(outline.get("chapters", []), project.list_drafted_chapters())
-        except Exception as e:
-            console.print(f"[bold red]❌ Terjadi kendala saat merancang Outline:[/bold red] {e}")
-            console.print("[yellow]World Bible dan Karakter Anda sudah tersimpan aman. Anda dapat mencoba merancang Outline kembali kapan saja tanpa mengulang dari awal.[/yellow]")
-            return False
+        while True:
+            try:
+                target_chapters = meta.get("target_chapters", 12)
+                with console.status(f"[bold cyan]🗺️ Outliner Agent sedang merancang alur Three-Act dan plot {target_chapters} bab...[/bold cyan]"):
+                    outline = outliner.generate_outline(project)
+                console.print("\n")
+                console.print(Panel(
+                    f"[bold]Sinopsis Lengkap:[/bold]\n{outline.get('overall_synopsis', '')}\n\n"
+                    f"[bold]Struktur Babak (Narrative Arc):[/bold]\n{outline.get('narrative_arc', '')}",
+                    title="🗺️ Rancangan Alur Cerita Makro",
+                    border_style="magenta",
+                ))
+                display_chapters_table(outline.get("chapters", []), project.list_drafted_chapters())
+                break
+            except Exception as e:
+                console.print(f"[bold red]❌ Terjadi kendala saat merancang Outline:[/bold red] {e}")
+                if not Confirm.ask("[bold yellow]🔄 Coba lagi tahap Outline sekarang? (World Bible & Karakter sudah tersimpan aman)[/bold yellow]", default=True):
+                    console.print("[yellow]World Bible dan Karakter Anda sudah tersimpan aman. Anda dapat mencoba merancang Outline kembali kapan saja tanpa mengulang dari awal.[/yellow]")
+                    return False
     else:
         console.print(f"[dim green]✓ Outline Bab sudah ada ({len(project.outline.get('chapters', []))} bab), mempertahankan data ini.[/dim green]")
 

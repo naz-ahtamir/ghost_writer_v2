@@ -197,6 +197,47 @@ def write_chapter_flow(project: NovelProject, llm: LLMClient) -> None:
         border_style="cyan",
     ))
 
+    # Check if chapter has an interrupted beat-by-beat checkpoint
+    beat_progress = project.get_chapter_beat_progress(ch_num)
+    if beat_progress:
+        done_b = int(beat_progress.get("completed_beats", 0))
+        total_b = int(beat_progress.get("total_beats", 0))
+        console.print(
+            f"\n[bold yellow]⏩ Ditemukan progres penulisan Bab {ch_num} yang sempat terhenti "
+            f"({done_b}/{total_b} Beat sudah tersimpan).[/bold yellow]"
+        )
+        if Confirm.ask(f"[bold green]Lanjutkan langsung dari Beat {done_b + 1}/{total_b} (tanpa mengulang dari Beat 1)?[/bold green]", default=True):
+            saved_beats = project.get_chapter_beats(ch_num) or []
+            beats = ScenePlannerAgent.normalize_beats(saved_beats, chapter_info=ch_info)
+            writer = WriterAgent(llm)
+            while True:
+                status_ctx = console.status(f"[bold magenta]⏩ Melanjutkan Beat {done_b + 1}/{len(beats)}...[/bold magenta]")
+                status_ctx.start()
+                try:
+                    def on_resume_progress(idx: int, total: int, beat: Dict[str, Any]) -> None:
+                        b_name = beat.get("beat_name", f"Beat {idx}")
+                        status_ctx.update(f"[bold magenta]✍️ Menyusun Beat {idx}/{total}: \"{b_name}\"...[/bold magenta]")
+                        console.print(f"  [cyan]→ Menyusun Beat {idx}/{total}:[/cyan] [bold white]{b_name}[/bold white]")
+
+                    prose = writer.write_chapter(
+                        project=project,
+                        chapter_info=ch_info,
+                        beats=beats,
+                        beat_by_beat=True,
+                        progress_callback=on_resume_progress,
+                    )
+                    status_ctx.stop()
+                    word_count = len(prose.split())
+                    console.print(f"\n[bold green]🎉 Bab {ch_num}: {ch_title} selesai dilanjutkan hingga tuntas! ({word_count} kata)[/bold green]\n")
+                    if Confirm.ask("[bold cyan]Tampilkan naskah bab di layar terminal sekarang?[/bold cyan]", default=True):
+                        console.print(Panel(Markdown(prose), title=f"📖 Naskah Bab {ch_num}: {ch_title}", border_style="blue"))
+                    return
+                except Exception as e:
+                    status_ctx.stop()
+                    console.print(f"[bold red]❌ Terjadi kendala saat melanjutkan Beat:[/bold red] {e}")
+                    if not Confirm.ask("[bold yellow]🔄 Coba lagi dari Beat yang tertunda sekarang? (Beat sebelumnya tetap aman)[/bold yellow]", default=True):
+                        return
+
     # Check if chapter already drafted
     existing = project.get_chapter(ch_num)
     if existing:
@@ -313,37 +354,49 @@ def write_chapter_flow(project: NovelProject, llm: LLMClient) -> None:
         elif action == "9":
             return
 
-    # Step 2: Prose Writer Agent
+    # Step 2: Prose Writer Agent (with in-place retry so progress is never lost)
     writer = WriterAgent(llm)
-    if beat_by_beat_mode and len(beats) > 1:
-        console.print(f"\n[bold magenta]✍️ Prose Writer Agent menyusun Bab {ch_num} secara berurutan ({len(beats)} Beats)...[/bold magenta]")
-        status_ctx = console.status("[bold magenta]Menyiapkan penulisan Beat 1...[/bold magenta]")
-        status_ctx.start()
+    while True:
         try:
-            def on_beat_progress(idx: int, total: int, beat: Dict[str, Any]) -> None:
-                b_name = beat.get("beat_name", f"Beat {idx}")
-                status_ctx.update(f"[bold magenta]✍️ Menyusun Beat {idx}/{total}: \"{b_name}\" (Tanpa Sensor)...[/bold magenta]")
-                console.print(f"  [cyan]→ Menyusun Beat {idx}/{total}:[/cyan] [bold white]{b_name}[/bold white]")
+            if beat_by_beat_mode and len(beats) > 1:
+                console.print(f"\n[bold magenta]✍️ Prose Writer Agent menyusun Bab {ch_num} secara berurutan ({len(beats)} Beats)...[/bold magenta]")
+                status_ctx = console.status("[bold magenta]Menyiapkan penulisan Beat 1...[/bold magenta]")
+                status_ctx.start()
+                try:
+                    def on_beat_progress(idx: int, total: int, beat: Dict[str, Any]) -> None:
+                        b_name = beat.get("beat_name", f"Beat {idx}")
+                        status_ctx.update(f"[bold magenta]✍️ Menyusun Beat {idx}/{total}: \"{b_name}\" (Tanpa Sensor)...[/bold magenta]")
+                        console.print(f"  [cyan]→ Menyusun Beat {idx}/{total}:[/cyan] [bold white]{b_name}[/bold white]")
 
-            prose = writer.write_chapter(
-                project=project,
-                chapter_info=ch_info,
-                beats=beats,
-                custom_instructions=custom_direction,
-                beat_by_beat=True,
-                progress_callback=on_beat_progress,
-            )
-        finally:
-            status_ctx.stop()
-    else:
-        with console.status(f"[bold magenta]⚡ Prose Writer + Self-Audit sedang menyusun & memoles Bab {ch_num} (1x proses)...[/bold magenta]"):
-            prose = writer.write_chapter(
-                project=project,
-                chapter_info=ch_info,
-                beats=beats,
-                custom_instructions=custom_direction,
-                beat_by_beat=False,
-            )
+                    prose = writer.write_chapter(
+                        project=project,
+                        chapter_info=ch_info,
+                        beats=beats,
+                        custom_instructions=custom_direction,
+                        beat_by_beat=True,
+                        progress_callback=on_beat_progress,
+                    )
+                finally:
+                    status_ctx.stop()
+            else:
+                with console.status(f"[bold magenta]⚡ Prose Writer + Self-Audit sedang menyusun & memoles Bab {ch_num} (1x proses)...[/bold magenta]"):
+                    prose = writer.write_chapter(
+                        project=project,
+                        chapter_info=ch_info,
+                        beats=beats,
+                        custom_instructions=custom_direction,
+                        beat_by_beat=False,
+                    )
+            break
+        except Exception as e:
+            console.print(f"\n[bold red]❌ Terjadi kendala saat menyusun Bab {ch_num}:[/bold red] {e}")
+            prog_now = project.get_chapter_beat_progress(ch_num)
+            if prog_now:
+                console.print(
+                    f"[bold green]💾 Progres Beat 1..{prog_now.get('completed_beats')} sudah tersimpan aman.[/bold green]"
+                )
+            if not Confirm.ask("[bold yellow]🔄 Coba lagi sekarang tanpa mengulang dari awal?[/bold yellow]", default=True):
+                return
 
     word_count = len(prose.split())
     console.print(f"\n[bold green]🎉 Bab {ch_num}: {ch_title} selesai disusun & diaudit berdasarkan {len(beats)} beat! ({word_count} kata)[/bold green]\n")

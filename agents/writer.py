@@ -137,8 +137,19 @@ class WriterAgent:
             total_beats = len(normalized_beats)
             words_per_beat = max(650, int(target_words / total_beats))
             accumulated_parts: List[str] = []
+            start_idx = 1
+
+            saved_prog = project.get_chapter_beat_progress(chap_num)
+            if saved_prog and saved_prog.get("total_beats") == total_beats:
+                prev_parts = list(saved_prog.get("parts") or [])
+                done_count = int(saved_prog.get("completed_beats") or len(prev_parts))
+                if 0 < done_count < total_beats and len(prev_parts) == done_count:
+                    accumulated_parts = prev_parts
+                    start_idx = done_count + 1
 
             for idx, beat in enumerate(normalized_beats, 1):
+                if idx < start_idx:
+                    continue
                 if progress_callback:
                     progress_callback(idx, total_beats, beat)
 
@@ -210,15 +221,22 @@ class WriterAgent:
 
                 if cleaned_part:
                     accumulated_parts.append(cleaned_part)
-                    # Save incremental progress after each beat
+                    # Save incremental progress after each beat so errors never restart from Beat 1
                     project.save_chapter(
                         chap_num,
                         "\n\n".join(accumulated_parts),
                         beats=normalized_beats,
                     )
+                    project.save_chapter_beat_progress(
+                        chap_num,
+                        completed_beats=idx,
+                        total_beats=total_beats,
+                        parts=accumulated_parts,
+                    )
 
             chapter_prose = "\n\n".join(accumulated_parts)
             project.save_chapter(chap_num, chapter_prose, beats=normalized_beats)
+            project.clear_chapter_beat_progress(chap_num)
             return chapter_prose
 
         # Single-pass structured mode

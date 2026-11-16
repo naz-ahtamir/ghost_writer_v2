@@ -893,6 +893,57 @@ def test_grok_web_bridge_keyless_provider():
     assert client.get_last_usage()["conversation_id"] == "grok_web"
 
 
+def test_beat_by_beat_resume_checkpoint():
+    from agents.writer import WriterAgent
+
+    class FlakyBeatLLM:
+        def __init__(self, fail_on_call: int):
+            self.calls = 0
+            self.fail_on_call = fail_on_call
+
+        def generate(self, prompt: str, system_instruction: str = None, temperature: float = 0.7) -> str:
+            self.calls += 1
+            if self.calls == self.fail_on_call:
+                raise TimeoutError("Simulasi timeout di Beat 2")
+            return f"Paragraf hasil generasi (panggilan ke-{self.calls})."
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        proj = NovelProject(Path(tmp_dir) / "resume_novel")
+        proj.save_metadata({"title": "Resume Test", "target_words_per_chapter": 1500})
+        proj.save_world_bible({"setting_name": "Kota Hujan", "atmosphere": "Kelam"})
+        proj.save_characters([{"name": "Raka", "role": "Protagonist"}])
+
+        beats = [
+            {"beat_number": 1, "beat_name": "Beat Satu", "scene_events": "Adegan 1"},
+            {"beat_number": 2, "beat_name": "Beat Dua", "scene_events": "Adegan 2"},
+            {"beat_number": 3, "beat_name": "Beat Tiga", "scene_events": "Adegan 3"},
+        ]
+        ch_info = {"chapter_number": 1, "title": "Bab Uji Resume", "pov_character": "Raka"}
+
+        # Run 1: fails on Beat 2, Beat 1 must be saved in checkpoint
+        flaky_llm = FlakyBeatLLM(fail_on_call=2)
+        writer = WriterAgent(flaky_llm)
+        try:
+            writer.write_chapter(proj, ch_info, beats, beat_by_beat=True)
+            assert False, "Expected TimeoutError on Beat 2"
+        except TimeoutError:
+            pass
+
+        prog = proj.get_chapter_beat_progress(1)
+        assert prog is not None
+        assert prog["completed_beats"] == 1
+        assert prog["total_beats"] == 3
+
+        # Run 2: resume with working LLM -> must only call LLM 2 times (Beat 2 and Beat 3), NOT Beat 1!
+        working_llm = FlakyBeatLLM(fail_on_call=999)
+        writer2 = WriterAgent(working_llm)
+        prose = writer2.write_chapter(proj, ch_info, beats, beat_by_beat=True)
+        assert working_llm.calls == 2
+        assert "panggilan ke-1" in prose
+        assert "panggilan ke-2" in prose
+        assert proj.get_chapter_beat_progress(1) is None
+
+
 if __name__ == "__main__":
     if pytest:
         pytest.main([__file__])
