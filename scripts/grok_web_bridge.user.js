@@ -1,0 +1,381 @@
+// ==UserScript==
+// @name         GhostWriter AI - Grok Web Bridge (Auto Text Generator)
+// @namespace    https://github.com/naz-ahtamir/ghost_writer
+// @version      1.0.0
+// @description  Menghubungkan GhostWriter AI langsung ke Web Grok (grok.com & x.com/i/grok) secara gratis tanpa API Key.
+// @author       GhostWriter AI
+// @match        https://grok.com/*
+// @match        https://*.grok.com/*
+// @match        https://x.com/i/grok*
+// @match        https://twitter.com/i/grok*
+// @grant        GM_xmlhttpRequest
+// @connect      127.0.0.1
+// @connect      localhost
+// @run-at       document-idle
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    const DEFAULT_PORT = 8788;
+    let bridgePort = Number(localStorage.getItem('gw_bridge_port')) || DEFAULT_PORT;
+    let isPaused = false;
+    let isBusy = false;
+    let currentTaskId = null;
+
+    function getBaseUrl() {
+        return `http://127.0.0.1:${bridgePort}`;
+    }
+
+    // Cross-origin request wrapper supporting both Tampermonkey GM_xmlhttpRequest and standard fetch
+    function bridgeRequest(method, path, bodyObj = null) {
+        const url = `${getBaseUrl()}${path}`;
+        return new Promise((resolve, reject) => {
+            if (typeof GM_xmlhttpRequest === 'function') {
+                GM_xmlhttpRequest({
+                    method: method,
+                    url: url,
+                    headers: { 'Content-Type': 'application/json' },
+                    data: bodyObj ? JSON.stringify(bodyObj) : undefined,
+                    timeout: 8000,
+                    onload: (res) => {
+                        try {
+                            resolve(JSON.parse(res.responseText));
+                        } catch (err) {
+                            reject(err);
+                        }
+                    },
+                    onerror: (err) => reject(err),
+                    ontimeout: () => reject(new Error('timeout')),
+                });
+            } else {
+                fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: bodyObj ? JSON.stringify(bodyObj) : undefined,
+                })
+                    .then((r) => r.json())
+                    .then(resolve)
+                    .catch(reject);
+            }
+        });
+    }
+
+    // UI Status Widget on grok.com
+    function createStatusWidget() {
+        if (document.getElementById('gw-bridge-widget')) return;
+        const box = document.createElement('div');
+        box.id = 'gw-bridge-widget';
+        box.style.cssText = [
+            'position:fixed',
+            'bottom:18px',
+            'right:18px',
+            'z-index:999999',
+            'background:rgba(15, 23, 42, 0.94)',
+            'color:#e2e8f0',
+            'border:1px solid #38bdf8',
+            'border-radius:12px',
+            'padding:10px 14px',
+            'font-family:system-ui,-apple-system,sans-serif',
+            'font-size:12px',
+            'box-shadow:0 8px 24px rgba(0,0,0,0.45)',
+            'display:flex',
+            'align-items:center',
+            'gap:10px',
+            'backdrop-filter:blur(8px)',
+        ].join(';');
+
+        const dot = document.createElement('span');
+        dot.id = 'gw-bridge-dot';
+        dot.style.cssText = 'width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block;';
+
+        const label = document.createElement('span');
+        label.id = 'gw-bridge-label';
+        label.textContent = `GhostWriter Bridge (:${bridgePort})`;
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.textContent = 'Pause';
+        toggleBtn.style.cssText = [
+            'background:#1e293b',
+            'color:#94a3b8',
+            'border:1px solid #475569',
+            'border-radius:6px',
+            'padding:3px 8px',
+            'cursor:pointer',
+            'font-size:11px',
+        ].join(';');
+        toggleBtn.onclick = () => {
+            isPaused = !isPaused;
+            toggleBtn.textContent = isPaused ? 'Resume' : 'Pause';
+            updateStatus(isPaused ? 'Paused' : 'Menunggu Prompt...', isPaused ? '#64748b' : '#22c55e');
+        };
+
+        box.appendChild(dot);
+        box.appendChild(label);
+        box.appendChild(toggleBtn);
+        document.body.appendChild(box);
+    }
+
+    function updateStatus(text, color = '#22c55e') {
+        createStatusWidget();
+        const dot = document.getElementById('gw-bridge-dot');
+        const label = document.getElementById('gw-bridge-label');
+        if (dot) dot.style.background = color;
+        if (label) label.textContent = `👻 ${text}`;
+    }
+
+    // Locate Grok chat input element (supports both grok.com and x.com/i/grok)
+    function findChatInput() {
+        const selectors = [
+            'textarea[aria-label]',
+            'textarea[placeholder]',
+            'form textarea',
+            'textarea',
+            'div[contenteditable="true"][role="textbox"]',
+            'div.ProseMirror[contenteditable="true"]',
+            'div[contenteditable="true"]',
+        ];
+        for (const sel of selectors) {
+            const els = Array.from(document.querySelectorAll(sel));
+            for (const el of els) {
+                const rect = el.getBoundingClientRect();
+                if (rect.width > 100 && rect.height > 20 && !el.disabled && !el.readOnly) {
+                    return el;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Locate Send button or submit trigger
+    function findSendButton() {
+        const btnSelectors = [
+            'button[type="submit"]',
+            'button[aria-label*="Send" i]',
+            'button[aria-label*="Kirim" i]',
+            'button[aria-label*="Ask" i]',
+            'button[data-testid*="send" i]',
+            'button[data-testid="grok-send-button"]',
+        ];
+        for (const sel of btnSelectors) {
+            const btns = Array.from(document.querySelectorAll(sel));
+            for (const btn of btns) {
+                const rect = btn.getBoundingClientRect();
+                if (rect.width > 16 && rect.height > 16 && !btn.disabled) {
+                    return btn;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Check if Grok is currently streaming / generating
+    function isGrokGenerating() {
+        const stopSelectors = [
+            'button[aria-label*="Stop" i]',
+            'button[aria-label*="Hentikan" i]',
+            'button[data-testid*="stop" i]',
+            'button[data-testid*="cancel" i]',
+        ];
+        for (const sel of stopSelectors) {
+            const el = document.querySelector(sel);
+            if (el && el.getBoundingClientRect().width > 10) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Collect all visible assistant message blocks in the conversation
+    function getAssistantMessages() {
+        const candidates = [];
+        const selectors = [
+            '[data-testid*="message" i]',
+            '.prose',
+            '.markdown',
+            '[class*="markdown" i]',
+            '[class*="message-bubble" i]',
+            'div[dir="auto"]',
+        ];
+
+        // Prefer structured markdown/prose containers first
+        const proseEls = Array.from(
+            document.querySelectorAll('.prose, .markdown, [class*="markdown-content" i], [data-message-author-role="assistant"]')
+        );
+        if (proseEls.length > 0) {
+            for (const el of proseEls) {
+                const txt = (el.innerText || '').trim();
+                if (txt.length > 0) {
+                    candidates.push(txt);
+                }
+            }
+            if (candidates.length > 0) return candidates;
+        }
+
+        // Fallback: broader message containers
+        for (const sel of selectors) {
+            const els = Array.from(document.querySelectorAll(sel));
+            for (const el of els) {
+                const txt = (el.innerText || '').trim();
+                if (txt.length > 20) {
+                    candidates.push(txt);
+                }
+            }
+            if (candidates.length > 0) break;
+        }
+        return candidates;
+    }
+
+    // Set text on React controlled textarea or contenteditable div
+    function setInputText(inputEl, text) {
+        inputEl.focus();
+        if (inputEl.tagName.toLowerCase() === 'textarea' || inputEl.tagName.toLowerCase() === 'input') {
+            const nativeSetter = Object.getOwnPropertyDescriptor(
+                window.HTMLTextAreaElement.prototype,
+                'value'
+            )?.set;
+            if (nativeSetter) {
+                nativeSetter.call(inputEl, text);
+            } else {
+                inputEl.value = text;
+            }
+            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+            inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+        } else {
+            // contenteditable / ProseMirror
+            inputEl.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, text);
+            if ((inputEl.innerText || '').trim().length < 5) {
+                inputEl.textContent = text;
+                inputEl.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
+            }
+        }
+    }
+
+    async function sleep(ms) {
+        return new Promise((r) => setTimeout(r, ms));
+    }
+
+    async function executeTask(task) {
+        isBusy = true;
+        currentTaskId = task.id;
+        updateStatus(`Menulis Prompt #${task.id.slice(0, 6)}...`, '#38bdf8');
+
+        try {
+            const inputEl = findChatInput();
+            if (!inputEl) {
+                throw new Error('Kotak input chat Grok tidak ditemukan. Pastikan Anda sudah login di halaman chat grok.com.');
+            }
+
+            const beforeMessages = getAssistantMessages();
+            const prevCount = beforeMessages.length;
+            const prevLastText = prevCount > 0 ? beforeMessages[prevCount - 1] : '';
+
+            setInputText(inputEl, task.prompt);
+            await sleep(400);
+
+            // Click Send button or press Enter
+            const sendBtn = findSendButton();
+            if (sendBtn) {
+                sendBtn.click();
+            } else {
+                inputEl.dispatchEvent(
+                    new KeyboardEvent('keydown', {
+                        key: 'Enter',
+                        code: 'Enter',
+                        keyCode: 13,
+                        which: 13,
+                        bubbles: true,
+                    })
+                );
+            }
+
+            updateStatus('Menunggu Grok selesai menjawab...', '#a855f7');
+
+            // Wait for response to start & stabilize
+            let started = false;
+            let lastSeenText = '';
+            let stableTicks = 0;
+            const maxWaitMs = 480000; // 8 minutes max for long chapter generation
+            const startTime = Date.now();
+
+            await sleep(1800);
+
+            while (Date.now() - startTime < maxWaitMs) {
+                await sleep(1000);
+
+                const generating = isGrokGenerating();
+                const currentMessages = getAssistantMessages();
+                const currCount = currentMessages.length;
+                const latestText = currCount > 0 ? currentMessages[currCount - 1] : '';
+
+                // Detect if a new message appeared or the last message changed (and isn't just echoing the user prompt)
+                const isNewOrUpdated =
+                    currCount > prevCount ||
+                    (latestText && latestText !== prevLastText && !task.prompt.startsWith(latestText.slice(0, 80)));
+
+                if (generating || isNewOrUpdated) {
+                    started = true;
+                }
+
+                if (started && latestText && latestText !== prevLastText) {
+                    if (latestText === lastSeenText && !generating) {
+                        stableTicks += 1;
+                    } else {
+                        stableTicks = 0;
+                        lastSeenText = latestText;
+                    }
+
+                    // Once text hasn't changed for 3 consecutive seconds and stop button is gone, generation is complete
+                    if (stableTicks >= 3 && lastSeenText.trim().length > 0) {
+                        break;
+                    }
+                }
+            }
+
+            if (!lastSeenText || lastSeenText.trim().length === 0) {
+                throw new Error('Waktu tunggu habis atau teks balasan Grok tidak terdeteksi di halaman.');
+            }
+
+            await bridgeRequest('POST', '/result', {
+                id: task.id,
+                content: lastSeenText.trim(),
+            });
+
+            updateStatus('Selesai! Menunggu tugas berikutnya...', '#22c55e');
+        } catch (err) {
+            updateStatus(`Kendala: ${err.message}`, '#ef4444');
+            try {
+                await bridgeRequest('POST', '/result', {
+                    id: task.id,
+                    error: err.message || String(err),
+                });
+            } catch (_) {}
+        } finally {
+            isBusy = false;
+            currentTaskId = null;
+        }
+    }
+
+    async function pollLoop() {
+        createStatusWidget();
+        while (true) {
+            if (!isPaused && !isBusy) {
+                try {
+                    const data = await bridgeRequest('GET', '/poll');
+                    if (data && data.task && data.task.id) {
+                        await executeTask(data.task);
+                    } else {
+                        updateStatus('Terhubung ke GhostWriter (Siap)', '#22c55e');
+                    }
+                } catch (_) {
+                    updateStatus(`Menunggu GhostWriter (:${bridgePort})`, '#f59e0b');
+                }
+            }
+            await sleep(1500);
+        }
+    }
+
+    setTimeout(pollLoop, 1500);
+})();

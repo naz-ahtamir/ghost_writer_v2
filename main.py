@@ -37,19 +37,44 @@ from agents.exporter import (
 def _get_provider_display_name(provider: str) -> str:
     """Return human-readable label for AI provider."""
     return {
-        "grok": "xAI Grok",
+        "grok": "xAI Grok (API)",
+        "grok_web": "xAI Grok Web (Gratis / Tanpa API Key)",
         "openrouter": "OpenRouter (Hermes 4/3)",
         "gemini": "Google Gemini",
     }.get(provider.lower(), provider)
 
 
+def _show_grok_web_bridge_info() -> None:
+    """Start local Web Bridge server and display setup / dashboard URL."""
+    from core.web_bridge import bridge_manager
+
+    bridge_url = bridge_manager.get_bridge_url()
+    userscript_url = f"{bridge_url}/grok_web_bridge.user.js"
+    connected = bridge_manager.is_userscript_connected()
+    status_str = (
+        "[bold green]🟢 Terhubung ke Tab grok.com (Mode Otomatis Siap)[/bold green]"
+        if connected
+        else "[bold yellow]🟡 Menunggu Koneksi Tab grok.com / Mode Relay Manual Siap[/bold yellow]"
+    )
+    console.print(Panel(
+        f"[bold cyan]Status Jembatan Web Grok:[/bold cyan] {status_str}\n\n"
+        f"🌐 [bold]Dashboard & Kontrol Bridge:[/bold] [bold cyan]{bridge_url}[/bold cyan]\n"
+        f"⚡ [bold]Link Install Userscript (Tampermonkey):[/bold] [bold green]{userscript_url}[/bold green]\n\n"
+        f"[dim]Cara Pakai:\n"
+        f"• Otomatis Penuh: Pasang Tampermonkey di browser, buka {userscript_url}, lalu buka https://grok.com\n"
+        f"• Tanpa Ekstensi: Buka {bridge_url} di browser untuk Salin Prompt & Tempel Balasan dari grok.com[/dim]",
+        title="👻 xAI Grok Web Bridge (Gratis Tanpa API Key)",
+        border_style="cyan",
+    ))
+
+
 def manage_settings(llm: LLMClient) -> None:
     """Configure AI provider, API key, and model."""
-    print_header("⚙️ Pengaturan AI Engine & Model", "Konfigurasi xAI Grok / OpenRouter (Hermes) / Google Gemini")
+    print_header("⚙️ Pengaturan AI Engine & Model", "Konfigurasi xAI Grok Web (Gratis) / Grok API / OpenRouter / Gemini")
 
     prov = llm.provider
     prov_name = _get_provider_display_name(prov)
-    curr_key = llm.api_key or "[Belum Diisi]"
+    curr_key = "[Tanpa API Key - Gratis via grok.com]" if prov == "grok_web" else (llm.api_key or "[Belum Diisi]")
     img_prov = config.get_image_provider()
     img_model = config.get_image_model(img_prov)
     grok_effort = config.get_grok_reasoning_effort()
@@ -60,6 +85,9 @@ def manage_settings(llm: LLMClient) -> None:
     console.print(f"[bold]API Key saat ini:[/bold] {curr_key}")
     console.print(f"[bold]Intensitas Penalaran Grok:[/bold] [bold yellow]{grok_effort.upper()}[/bold yellow] [dim]('low' sangat hemat token & cepat)[/dim]")
     console.print(f"[bold]Engine Ilustrasi Gambar:[/bold] [bold magenta]{img_prov.upper()}[/bold magenta] [dim]({img_model})[/dim]")
+
+    if prov == "grok_web":
+        _show_grok_web_bridge_info()
 
     if usage_stats.get("requests_count", 0) > 0:
         p_tok = usage_stats["prompt_tokens"]
@@ -75,8 +103,8 @@ def manage_settings(llm: LLMClient) -> None:
         )
 
     console.print("\n[bold cyan]Opsi Pengaturan:[/bold cyan]")
-    console.print("  [white]1.[/white] Ganti Provider AI Teks (xAI Grok / OpenRouter Hermes / Google Gemini)")
-    console.print("  [white]2.[/white] Masukkan / Ubah API Key")
+    console.print("  [white]1.[/white] Ganti Provider AI Teks (Grok Web Gratis / Grok API / OpenRouter / Gemini)")
+    console.print("  [white]2.[/white] Masukkan / Ubah API Key (atau Buka Dashboard Grok Web Bridge)")
     console.print("  [white]3.[/white] Ganti Model AI Teks")
     console.print("  [white]4.[/white] Ganti Engine & Model Ilustrasi Gambar (Flux Realism Uncensored / Grok / Gemini / Local SD)")
     console.print("  [white]5.[/white] Atur Intensitas Penalaran Grok (Reasoning Effort: low / medium / high)")
@@ -86,21 +114,35 @@ def manage_settings(llm: LLMClient) -> None:
     opt = Prompt.ask("\nPilih opsi", choices=["1", "2", "3", "4", "5", "6", "7"], default="7")
     if opt == "1":
         console.print("\n[bold cyan]Pilih Provider AI Teks:[/bold cyan]")
-        console.print("  [white]1.[/white] [bold cyan]xAI Grok[/bold cyan] (grok-3 / grok-2)")
-        console.print("  [white]2.[/white] [bold green]OpenRouter (Nous Hermes 4 / Hermes 3)[/bold green] (Sangat patuh & minim sensor)")
-        console.print("  [white]3.[/white] [bold blue]Google Gemini[/bold blue] (Gratis via Google AI Studio)")
-        prov_choice = Prompt.ask("Pilih provider (1-3)", choices=["1", "2", "3"], default="2")
-        new_prov = {"1": "grok", "2": "openrouter", "3": "gemini"}[prov_choice]
+        console.print("  [white]1.[/white] [bold green]xAI Grok Web (Gratis / Tanpa API Key)[/bold green] (Langsung via grok.com / x.com)")
+        console.print("  [white]2.[/white] [bold cyan]xAI Grok API[/bold cyan] (Resmi via GROK_API_KEY)")
+        console.print("  [white]3.[/white] [bold yellow]OpenRouter (Nous Hermes 4 / Hermes 3)[/bold yellow] (Sangat patuh & minim sensor)")
+        console.print("  [white]4.[/white] [bold blue]Google Gemini[/bold blue] (Gratis via Google AI Studio)")
+        prov_choice = Prompt.ask("Pilih provider (1-4)", choices=["1", "2", "3", "4"], default="1")
+        new_prov = {"1": "grok_web", "2": "grok", "3": "openrouter", "4": "gemini"}[prov_choice]
         new_name = _get_provider_display_name(new_prov)
         new_key = config.get_api_key(new_prov)
         new_model = config.get_active_model(new_prov)
         config.save_settings(provider=new_prov, api_key=new_key, model=new_model)
         llm.set_provider(new_prov, api_key=new_key, model=new_model)
         console.print(f"[bold green]✓ Provider berhasil diubah ke {new_name} ({new_model})![/bold green]")
-        if not new_key:
+        if new_prov == "grok_web":
+            _show_grok_web_bridge_info()
+            from core.web_bridge import bridge_manager
+            import webbrowser
+            if Confirm.ask("Buka Dashboard Grok Web Bridge di browser sekarang?", default=True):
+                webbrowser.open(bridge_manager.get_bridge_url())
+        elif not new_key:
             console.print("[yellow]⚠️ API Key untuk provider ini belum diisi. Silakan pilih opsi 2 untuk memasukkannya.[/yellow]")
 
     elif opt == "2":
+        if llm.provider == "grok_web":
+            _show_grok_web_bridge_info()
+            from core.web_bridge import bridge_manager
+            import webbrowser
+            if Confirm.ask("Buka Dashboard Grok Web Bridge di browser sekarang?", default=True):
+                webbrowser.open(bridge_manager.get_bridge_url())
+            return
         prov_meta = {
             "grok": ("xAI (Grok)", "https://console.x.ai"),
             "openrouter": ("OpenRouter", "https://openrouter.ai/keys"),
@@ -396,19 +438,31 @@ def export_novel_flow(project: NovelProject) -> None:
 
 
 def check_api_key_prompt(llm: LLMClient) -> None:
-    """Ensure active provider API key is present, prompt if missing."""
+    """Ensure active provider API key is present (or keyless Grok Web Bridge is active)."""
+    if llm.provider == "grok_web":
+        _show_grok_web_bridge_info()
+        return
+
     if not llm.api_key:
         if llm.provider == "grok":
             console.print(Panel(
                 "[bold yellow]⚠️ xAI (Grok) API Key Belum Ditemukan![/bold yellow]\n\n"
-                "Dapatkan xAI API Key di: [cyan]https://console.x.ai[/cyan]\n\n"
-                "[dim]💡 Ketik 'openrouter' untuk memakai Hermes 4/3, atau 'gemini' untuk Google Gemini.[/dim]",
+                "• [bold green]Ingin Gratis Tanpa API Key?[/bold green] Ketik [bold green]web[/bold green] untuk langsung memakai [bold]xAI Grok Web (grok.com)[/bold]!\n"
+                "• Atau masukkan xAI API Key dari: [cyan]https://console.x.ai[/cyan]\n"
+                "• [dim]Ketik 'openrouter' untuk Hermes 4/3, atau 'gemini' untuk Google Gemini.[/dim]",
                 title="🔑 Konfigurasi AI Engine (Grok)",
                 border_style="yellow",
             ))
-            key = Prompt.ask("[bold cyan]Masukkan xAI (Grok) API Key (atau 'openrouter' / 'gemini')[/bold cyan]", default="")
+            key = Prompt.ask("[bold cyan]Ketik 'web' (Gratis via grok.com) atau masukkan xAI API Key[/bold cyan]", default="web")
             choice = key.strip().lower()
-            if choice in ("openrouter", "gemini"):
+            if choice in ("web", "grok_web"):
+                new_model = config.get_active_model("grok_web")
+                config.save_settings(provider="grok_web", api_key="", model=new_model)
+                llm.set_provider("grok_web", api_key="", model=new_model)
+                console.print(f"[bold green]✓ Beralih ke xAI Grok Web (Gratis / Tanpa API Key)! ({new_model})[/bold green]\n")
+                _show_grok_web_bridge_info()
+                return
+            elif choice in ("openrouter", "gemini"):
                 llm.set_provider(choice)
                 alt_key = config.get_api_key(choice)
                 config.save_settings(provider=choice, api_key=alt_key, model=llm.model)
@@ -421,15 +475,21 @@ def check_api_key_prompt(llm: LLMClient) -> None:
         elif llm.provider == "openrouter":
             console.print(Panel(
                 "[bold yellow]⚠️ OpenRouter API Key Belum Ditemukan![/bold yellow]\n\n"
-                "OpenRouter digunakan untuk menjalankan [bold green]nousresearch/hermes-4-70b[/bold green] & [bold green]hermes-3-llama-3.1-70b[/bold green].\n"
+                "OpenRouter digunakan untuk menjalankan [bold green]nousresearch/hermes-4-405b[/bold green].\n"
                 "Dapatkan OpenRouter API Key di: [cyan]https://openrouter.ai/keys[/cyan]\n\n"
-                "[dim]💡 Ketik 'grok' atau 'gemini' jika ingin beralih provider.[/dim]",
+                "[dim]💡 Ketik 'web' untuk beralih ke Grok Web Gratis Tanpa API Key, atau 'grok' / 'gemini'.[/dim]",
                 title="🔑 Konfigurasi AI Engine (OpenRouter)",
                 border_style="yellow",
             ))
-            key = Prompt.ask("[bold cyan]Masukkan OpenRouter API Key (atau tekan Enter untuk lewati)[/bold cyan]", default="")
+            key = Prompt.ask("[bold cyan]Masukkan OpenRouter API Key (atau ketik 'web' untuk Grok Web Gratis)[/bold cyan]", default="")
             choice = key.strip().lower()
-            if choice in ("grok", "gemini"):
+            if choice in ("web", "grok_web"):
+                new_model = config.get_active_model("grok_web")
+                config.save_settings(provider="grok_web", api_key="", model=new_model)
+                llm.set_provider("grok_web", api_key="", model=new_model)
+                _show_grok_web_bridge_info()
+                return
+            elif choice in ("grok", "gemini"):
                 llm.set_provider(choice)
                 alt_key = config.get_api_key(choice)
                 config.save_settings(provider=choice, api_key=alt_key, model=llm.model)
@@ -442,12 +502,19 @@ def check_api_key_prompt(llm: LLMClient) -> None:
         else:
             console.print(Panel(
                 "[bold yellow]⚠️ Google Gemini API Key Belum Ditemukan![/bold yellow]\n\n"
-                "Dapatkan Gemini API Key gratis di: [cyan]https://aistudio.google.com/app/apikey[/cyan]",
+                "Dapatkan Gemini API Key gratis di: [cyan]https://aistudio.google.com/app/apikey[/cyan]\n"
+                "[dim]💡 Ketik 'web' jika ingin memakai xAI Grok Web Gratis Tanpa API Key.[/dim]",
                 title="🔑 Konfigurasi AI Engine (Gemini)",
                 border_style="yellow",
             ))
-            key = Prompt.ask("[bold cyan]Masukkan Gemini API Key Anda (atau tekan Enter untuk lewati)[/bold cyan]", default="")
-            if key.strip():
+            key = Prompt.ask("[bold cyan]Masukkan Gemini API Key Anda (atau ketik 'web' untuk Grok Web Gratis)[/bold cyan]", default="")
+            if key.strip().lower() in ("web", "grok_web"):
+                new_model = config.get_active_model("grok_web")
+                config.save_settings(provider="grok_web", api_key="", model=new_model)
+                llm.set_provider("grok_web", api_key="", model=new_model)
+                _show_grok_web_bridge_info()
+                return
+            elif key.strip():
                 config.save_settings(provider="gemini", api_key=key.strip(), model=llm.model)
                 llm.set_api_key(key.strip())
                 console.print("[bold green]✓ Gemini API Key berhasil disimpan![/bold green]\n")

@@ -37,9 +37,11 @@ if ENV_PATH.exists():
 else:
     load_dotenv()
 
-# Supported Providers: "grok", "openrouter", or "gemini"
-SUPPORTED_PROVIDERS = ("grok", "openrouter", "gemini")
+# Supported Providers: "grok", "grok_web", "openrouter", or "gemini"
+SUPPORTED_PROVIDERS = ("grok", "grok_web", "openrouter", "gemini")
+KEYLESS_PROVIDERS = ("grok_web",)
 DEFAULT_PROVIDER = os.getenv("AI_PROVIDER", "grok").lower()
+WEB_BRIDGE_PORT = int(os.getenv("WEB_BRIDGE_PORT", "8788"))
 
 GROK_MODELS = [
     "grok-3",
@@ -53,6 +55,13 @@ DEFAULT_GROK_MODEL = os.getenv("GROK_MODEL", "grok-3")
 DEFAULT_GROK_REASONING_EFFORT = os.getenv("GROK_REASONING_EFFORT", "low").strip().lower()
 GROK_TOKEN_CONTEXT_LIMIT = int(os.getenv("GROK_TOKEN_CONTEXT_LIMIT", "200000"))
 GROK_TOKEN_WARN_THRESHOLD = int(os.getenv("GROK_TOKEN_WARN_THRESHOLD", "160000"))
+
+GROK_WEB_MODELS = [
+    "grok-3-web",
+    "grok-3-thinking-web",
+    "grok-2-web",
+]
+DEFAULT_GROK_WEB_MODEL = os.getenv("GROK_WEB_MODEL", "grok-3-web")
 
 OPENROUTER_MODELS = [
     "nousresearch/hermes-4-405b",
@@ -78,6 +87,7 @@ DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 # Fallback alias for backward compatibility
 _PROVIDER_MODEL_MAP = {
     "grok": (GROK_MODELS, DEFAULT_GROK_MODEL),
+    "grok_web": (GROK_WEB_MODELS, DEFAULT_GROK_WEB_MODEL),
     "openrouter": (OPENROUTER_MODELS, DEFAULT_OPENROUTER_MODEL),
     "gemini": (GEMINI_MODELS, DEFAULT_GEMINI_MODEL),
 }
@@ -149,8 +159,14 @@ def get_sd_api_url() -> str:
     return os.getenv("SD_API_URL", DEFAULT_SD_API_URL).strip()
 
 
+def is_keyless_provider(provider: str = None) -> bool:
+    """Return True if the provider operates without an API key (e.g., grok_web)."""
+    prov = (provider or get_provider()).lower()
+    return prov in KEYLESS_PROVIDERS
+
+
 def get_provider() -> str:
-    """Retrieve current AI provider (grok, openrouter, or gemini)."""
+    """Retrieve current AI provider (grok, grok_web, openrouter, or gemini)."""
     p = os.getenv("AI_PROVIDER", "grok").strip().lower()
     return p if p in SUPPORTED_PROVIDERS else "grok"
 
@@ -158,6 +174,8 @@ def get_provider() -> str:
 def get_api_key(provider: str = None) -> str:
     """Retrieve API key for given or active provider."""
     prov = (provider or get_provider()).lower()
+    if prov == "grok_web":
+        return ""
     if prov == "grok":
         return (os.getenv("GROK_API_KEY") or os.getenv("XAI_API_KEY", "")).strip()
     if prov == "openrouter":
@@ -174,6 +192,8 @@ def get_models_for_provider(provider: str = None) -> list:
 def get_active_model(provider: str = None) -> str:
     """Retrieve active model name for the provider."""
     prov = (provider or get_provider()).lower()
+    if prov == "grok_web":
+        return os.getenv("GROK_WEB_MODEL", DEFAULT_GROK_WEB_MODEL).strip()
     if prov == "grok":
         return os.getenv("GROK_MODEL", DEFAULT_GROK_MODEL).strip()
     if prov == "openrouter":
@@ -196,12 +216,13 @@ def save_settings(
 ) -> None:
     """Save provider, API key, model, and reasoning effort to .env file."""
     provider = provider.strip().lower()
-    api_key = api_key.strip()
-    model = model.strip()
+    api_key = (api_key or "").strip()
+    model = (model or "").strip()
 
     # Read existing keys to preserve the other provider's credentials
     grok_key = api_key if provider == "grok" else get_api_key("grok")
     grok_model = model if provider == "grok" else get_active_model("grok")
+    grok_web_model = model if provider == "grok_web" else get_active_model("grok_web")
     effort = (grok_reasoning_effort or get_grok_reasoning_effort()).strip().lower()
     openrouter_key = api_key if provider == "openrouter" else get_api_key("openrouter")
     openrouter_model = model if provider == "openrouter" else get_active_model("openrouter")
@@ -215,6 +236,7 @@ def save_settings(
         f"AI_PROVIDER={provider}",
         f"GROK_API_KEY={grok_key}",
         f"GROK_MODEL={grok_model}",
+        f"GROK_WEB_MODEL={grok_web_model}",
         f"GROK_REASONING_EFFORT={effort}",
         f"OPENROUTER_API_KEY={openrouter_key}",
         f"OPENROUTER_MODEL={openrouter_model}",
@@ -232,6 +254,7 @@ def save_settings(
     os.environ["AI_PROVIDER"] = provider
     os.environ["GROK_API_KEY"] = grok_key
     os.environ["GROK_MODEL"] = grok_model
+    os.environ["GROK_WEB_MODEL"] = grok_web_model
     os.environ["GROK_REASONING_EFFORT"] = effort
     os.environ["OPENROUTER_API_KEY"] = openrouter_key
     os.environ["OPENROUTER_MODEL"] = openrouter_model

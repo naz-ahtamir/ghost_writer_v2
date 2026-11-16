@@ -264,10 +264,19 @@ class LLMClient:
         if self.model in invalid_legacy:
             if self.provider == "grok":
                 self.model = config.DEFAULT_GROK_MODEL
+            elif self.provider == "grok_web":
+                self.model = config.DEFAULT_GROK_WEB_MODEL
             elif self.provider == "openrouter":
                 self.model = config.DEFAULT_OPENROUTER_MODEL
             else:
                 self.model = config.DEFAULT_GEMINI_MODEL
+
+        if self.provider == "grok_web":
+            self._client = "grok_web"
+            self.available_models = list(config.GROK_WEB_MODELS)
+            if not self.model or self.model not in self.available_models:
+                self.model = self.available_models[0]
+            return
 
         if not self.api_key:
             self._client = None
@@ -302,7 +311,9 @@ class LLMClient:
                     self.model = self.available_models[0]
 
     def is_configured(self) -> bool:
-        """Check if an API key is provided and client initialized."""
+        """Check if an API key is provided (or keyless web bridge is active) and client initialized."""
+        if self.provider == "grok_web":
+            return self._client == "grok_web"
         return bool(self.api_key and self._client)
 
     @staticmethod
@@ -344,6 +355,48 @@ class LLMClient:
         messages: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """Execute a single generation request with telemetry, cache routing, and reasoning control."""
+        if self.provider == "grok_web" or self._client == "grok_web":
+            from core.web_bridge import execute_web_grok_request
+
+            active_prompt = prompt
+            if len(active_prompt) > 400000:
+                safe_log("[Grok Web] ⚠️ Teks prompt sangat besar (>400k karakter), memangkas bagian tengah teks...")
+                active_prompt = self.prune_context(active_prompt, max_chars=360000)
+
+            raw_content = execute_web_grok_request(
+                prompt=active_prompt,
+                system_instruction=system_instruction,
+                model_name=model_name,
+                is_json=is_json,
+                messages=messages,
+                log_fn=safe_log,
+            )
+
+            content = re.sub(r"<think>[\s\S]*?</think>", "", raw_content or "").strip()
+            est_prompt_tokens = max(1, len(active_prompt) // 4)
+            est_comp_tokens = max(1, len(content) // 4)
+            est_total = est_prompt_tokens + est_comp_tokens
+
+            self.last_usage = {
+                "prompt_tokens": est_prompt_tokens,
+                "completion_tokens": est_comp_tokens,
+                "total_tokens": est_total,
+                "cached_tokens": 0,
+                "reasoning_tokens": 0,
+                "cache_hit_rate": 0.0,
+                "reasoning_effort": "web",
+                "conversation_id": "grok_web",
+                "timestamp": time.time(),
+            }
+            self.cumulative_usage["prompt_tokens"] += est_prompt_tokens
+            self.cumulative_usage["completion_tokens"] += est_comp_tokens
+            self.cumulative_usage["total_tokens"] += est_total
+            self.cumulative_usage["requests_count"] += 1
+
+            if self._is_refusal_response(content):
+                raise RuntimeError(f"Model menolak respons: {content[:120]}")
+            return content
+
         ctx = _create_ssl_context()
 
         if self.provider in ("grok", "openrouter") or self._client in ("grok_rest", "openrouter_rest"):
@@ -661,29 +714,32 @@ class LLMClient:
         """Generate text using active provider with automatic retry, reasoning effort control, and model fallback."""
         prov_labels = {
             "grok": "xAI Grok",
+            "grok_web": "xAI Grok Web (Gratis)",
             "openrouter": "OpenRouter (Hermes)",
             "gemini": "Google Gemini",
         }
         prov_label = prov_labels.get(self.provider, "Google Gemini")
         if not self.is_configured():
             raise ValueError(
-                f"{prov_label} API Key belum diset! Silakan masukkan API Key Anda di menu Pengaturan atau file .env."
+                f"{prov_label} API Key belum diset! Silakan masukkan API Key Anda di menu Pengaturan atau pilih mode Grok Web (Gratis Tanpa API Key)."
             )
 
         # Build list of fallback models for active provider
         models_to_try = [self.model]
-        provider_models = getattr(self, "available_models", None) or config.get_models_for_provider(self.provider)
-        for candidate in provider_models:
-            if candidate not in models_to_try:
-                models_to_try.append(candidate)
+        if self.provider != "grok_web":
+            provider_models = getattr(self, "available_models", None) or config.get_models_for_provider(self.provider)
+            for candidate in provider_models:
+                if candidate not in models_to_try:
+                    models_to_try.append(candidate)
 
         last_error = None
+        effective_retries = 1 if self.provider == "grok_web" else max_retries
 
         for model_idx, current_model in enumerate(models_to_try):
             if model_idx > 0:
                 safe_log(f"[GhostWriter] Beralih ke model cadangan {prov_label}: {current_model}...")
 
-            for attempt in range(max_retries):
+            for attempt in range(effective_retries):
                 try:
                     active_sys = system_instruction if attempt == 0 else None
                     active_prompt = prompt

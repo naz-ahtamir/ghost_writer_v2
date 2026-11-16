@@ -850,6 +850,49 @@ def test_free_editing_and_immersive_writer_prompts():
         assert "DILARANG MERANGKUM ADEGAN" in WRITER_SYSTEM
 
 
+def test_grok_web_bridge_keyless_provider():
+    import threading
+    import time
+    from core.llm import LLMClient
+    from core.web_bridge import bridge_manager, USERSCRIPT_PATH, _build_dashboard_html
+
+    # 1. Keyless provider must be configured without API key
+    client = LLMClient(api_key="", provider="grok_web")
+    assert client.provider == "grok_web"
+    assert client._client == "grok_web"
+    assert client.is_configured() is True
+
+    # 2. Verify Userscript and Dashboard HTML are valid
+    assert USERSCRIPT_PATH.exists()
+    js_text = USERSCRIPT_PATH.read_text(encoding="utf-8")
+    assert "GhostWriter AI - Grok Web Bridge" in js_text
+    dashboard_html = _build_dashboard_html(8788)
+    assert "GhostWriter AI" in dashboard_html
+
+    # 3. Simulate browser Userscript polling and completing task via bridge_manager
+    def simulated_browser_worker():
+        for _ in range(30):
+            task = bridge_manager.claim_next_task_for_userscript()
+            if task and task.get("id"):
+                bridge_manager.complete_task(
+                    task["id"],
+                    content='{"status": "ok", "source": "grok_web"}',
+                )
+                return
+            time.sleep(0.05)
+
+    t = threading.Thread(target=simulated_browser_worker, daemon=True)
+    t.start()
+
+    res = client.generate_json(
+        prompt="Tes koneksi Grok Web",
+        system_instruction="Kembalikan JSON saja.",
+    )
+    t.join(timeout=5)
+    assert res == {"status": "ok", "source": "grok_web"}
+    assert client.get_last_usage()["conversation_id"] == "grok_web"
+
+
 if __name__ == "__main__":
     if pytest:
         pytest.main([__file__])
