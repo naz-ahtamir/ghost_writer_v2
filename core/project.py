@@ -388,6 +388,92 @@ class NovelProject:
 
         return "\n".join(summary_lines)
 
+    def sync_character_rename(self, old_name: str, new_name: str) -> Dict[str, int]:
+        """Propagate a character rename across premise, outline, and saved chapter beats."""
+        old_clean = (old_name or "").strip()
+        new_clean = (new_name or "").strip()
+        if not old_clean or not new_clean or old_clean == new_clean:
+            return {"metadata": 0, "outline": 0, "beats_files": 0}
+
+        pattern = re.compile(rf"\b{re.escape(old_clean)}\b")
+
+        def _replace_str(val: Any) -> tuple[Any, bool]:
+            if isinstance(val, str) and pattern.search(val):
+                return pattern.sub(new_clean, val), True
+            return val, False
+
+        counts = {"metadata": 0, "outline": 0, "beats_files": 0}
+
+        # 1. Premise in metadata
+        premise = self.metadata.get("premise", "")
+        new_premise, changed = _replace_str(premise)
+        if changed:
+            self.save_metadata({"premise": new_premise})
+            counts["metadata"] = 1
+
+        # 2. Outline
+        if self.outline:
+            outline_changed = False
+            outline_copy = dict(self.outline)
+            for key in ("overall_synopsis", "narrative_arc"):
+                if key in outline_copy:
+                    updated, chg = _replace_str(outline_copy[key])
+                    if chg:
+                        outline_copy[key] = updated
+                        outline_changed = True
+            chapters = list(outline_copy.get("chapters", []))
+            for ch in chapters:
+                for field in ("title", "pov_character", "setting", "summary", "conflict", "turning_point"):
+                    if field in ch:
+                        updated, chg = _replace_str(ch[field])
+                        if chg:
+                            ch[field] = updated
+                            outline_changed = True
+            if outline_changed:
+                outline_copy["chapters"] = chapters
+                self.save_outline(outline_copy)
+                counts["outline"] = 1
+
+        # 3. Saved beats files
+        for beats_file in sorted(self.chapters_dir.glob("chapter_*_beats.json")):
+            try:
+                with open(beats_file, "r", encoding="utf-8") as f:
+                    beats_data = json.load(f)
+                file_changed = False
+                if isinstance(beats_data, list):
+                    for b in beats_data:
+                        if isinstance(b, dict):
+                            for k, v in list(b.items()):
+                                updated, chg = _replace_str(v)
+                                if chg:
+                                    b[k] = updated
+                                    file_changed = True
+                if file_changed:
+                    with open(beats_file, "w", encoding="utf-8") as f:
+                        json.dump(beats_data, f, indent=2, ensure_ascii=False)
+                    counts["beats_files"] += 1
+            except Exception:
+                pass
+
+        return counts
+
+    def clear_chapter_beats_cache(self, only_undrafted: bool = True) -> int:
+        """Delete cached beats & checkpoints so chapters regenerate cleanly with updated characters/outline."""
+        drafted = set(self.list_drafted_chapters()) if only_undrafted else set()
+        removed = 0
+        for pattern_glob in ("chapter_*_beats.json", "chapter_*_progress.json"):
+            for fpath in sorted(self.chapters_dir.glob(pattern_glob)):
+                m = re.match(r"chapter_(\d+)_", fpath.name)
+                ch_num = int(m.group(1)) if m else None
+                if only_undrafted and ch_num in drafted:
+                    continue
+                try:
+                    fpath.unlink()
+                    removed += 1
+                except Exception:
+                    pass
+        return removed
+
 
 class ProjectManager:
     """Manages finding, listing, and creating novel projects."""

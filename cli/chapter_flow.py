@@ -245,14 +245,21 @@ def write_chapter_flow(project: NovelProject, llm: LLMClient) -> None:
         console.print(f"\n[bold yellow]ℹ️ Bab {ch_num} sudah memiliki naskah tersimpan ({existing_words} kata).[/bold yellow]")
         console.print("  [bold green]1.[/bold green] ✨ Poles / Perpanjang / Edit Naskah Bab Ini dengan Instruksi Bebas (Tanpa Generate dari Awal)")
         console.print("  [bold cyan]2.[/bold cyan] 🛠️ Buka Studio Rencana Bab & Beat (Edit Bab / Beat / Tulis Ulang)")
-        console.print("  [bold white]3.[/bold white] 📖 Baca Naskah Bab Ini Sekarang")
-        console.print("  [bold red]4.[/bold red] 🚪 Batal / Kembali")
-        ex_choice = Prompt.ask("\n[bold green]Pilih aksi (1-4)[/bold green]", choices=["1", "2", "3", "4"], default="1")
-        if ex_choice == "4":
+        console.print("  [bold magenta]3.[/bold magenta] 🔄 Rancang Ulang Beat & Tulis Ulang Bab Ini (Sesuai Karakter & Outline Terbaru)")
+        console.print("  [bold white]4.[/bold white] 📖 Baca Naskah Bab Ini Sekarang")
+        console.print("  [bold red]5.[/bold red] 🚪 Batal / Kembali")
+        ex_choice = Prompt.ask("\n[bold green]Pilih aksi (1-5)[/bold green]", choices=["1", "2", "3", "4", "5"], default="1")
+        if ex_choice == "5":
             return
-        elif ex_choice == "3":
+        elif ex_choice == "4":
             console.print(Panel(Markdown(existing), title=f"📖 Naskah Bab {ch_num}: {ch_title} ({existing_words} kata)", border_style="blue"))
             return
+        elif ex_choice == "3":
+            beats_f = project.get_chapter_beats_file(ch_num)
+            if beats_f.exists():
+                beats_f.unlink()
+            project.clear_chapter_beat_progress(ch_num)
+            console.print(f"[bold cyan]🔄 Cache Beat lama Bab {ch_num} dihapus. Merancang ulang Beat sesuai karakter & outline terbaru...[/bold cyan]")
         elif ex_choice == "1":
             user_notes = Prompt.ask(
                 "[bold yellow]Tulis instruksi revisi / perpanjangan untuk Bab ini[/bold yellow]",

@@ -227,9 +227,10 @@ def edit_world_bible_interactively(project: NovelProject) -> None:
     console.print("[bold green]✓ Perubahan World Bible berhasil disimpan![/bold green]")
 
 
-def edit_characters_interactively(project: NovelProject) -> None:
-    """Interactive menu to freely edit, add, or delete characters."""
+def edit_characters_interactively(project: NovelProject, llm: Optional[LLMClient] = None) -> None:
+    """Interactive menu to freely edit, add, or delete characters, syncing names & optionally regenerating outline."""
     characters: List[Dict[str, Any]] = list(project.characters or [])
+    any_changed = False
     while True:
         console.print("\n")
         if characters:
@@ -254,10 +255,13 @@ def edit_characters_interactively(project: NovelProject) -> None:
             c_idx = IntPrompt.ask(f"Pilih nomor karakter yang ingin diubah (1-{len(characters)})", default=1)
             if 1 <= c_idx <= len(characters):
                 target = characters[c_idx - 1]
-                console.print(f"\n[bold yellow]Mengedit Karakter #{c_idx}: {target.get('name', '')}[/bold yellow] [dim](Tekan Enter jika tidak diubah)[/dim]")
-                target["name"] = Prompt.ask("Nama Karakter", default=str(target.get("name", "")))
+                old_name = str(target.get("name", "")).strip()
+                console.print(f"\n[bold yellow]Mengedit Karakter #{c_idx}: {old_name}[/bold yellow] [dim](Tekan Enter jika tidak diubah)[/dim]")
+                new_name = Prompt.ask("Nama Karakter", default=old_name).strip()
+                target["name"] = new_name or old_name
                 target["role"] = Prompt.ask("Peran (Protagonist / Antagonist / Supporting / dsb)", default=str(target.get("role", "")))
                 target["appearance"] = Prompt.ask("Penampilan Fisik & Ciri Khas", default=str(target.get("appearance", "")))
+                target["visual_dna"] = target["appearance"]
                 target["personality"] = Prompt.ask("Sifat & Kepribadian", default=str(target.get("personality", "")))
                 target["flaw"] = Prompt.ask("Kelemahan Batin / Flaw", default=str(target.get("flaw", "")))
                 target["internal_motivation"] = Prompt.ask("Motivasi Batin / Keinginan Terdalam", default=str(target.get("internal_motivation", "")))
@@ -265,6 +269,13 @@ def edit_characters_interactively(project: NovelProject) -> None:
                 target["speech_mannerism"] = Prompt.ask("Gaya Bicara & Dialog Khas", default=str(target.get("speech_mannerism", "")))
                 target["backstory"] = Prompt.ask("Masa Lalu (Backstory)", default=str(target.get("backstory", "")))
                 project.save_characters(characters)
+                any_changed = True
+                if old_name and target["name"] != old_name:
+                    sync_counts = project.sync_character_rename(old_name, target["name"])
+                    console.print(
+                        f"[bold cyan]🔄 Nama '{old_name}' → '{target['name']}' disinkronkan "
+                        f"(Outline: {sync_counts['outline']}, File Beat: {sync_counts['beats_files']}).[/bold cyan]"
+                    )
                 console.print(f"[bold green]✓ Karakter '{target['name']}' berhasil diperbarui![/bold green]")
             else:
                 console.print("[red]Nomor karakter tidak valid.[/red]")
@@ -296,6 +307,7 @@ def edit_characters_interactively(project: NovelProject) -> None:
                 "backstory": backstory.strip(),
             })
             project.save_characters(characters)
+            any_changed = True
             console.print(f"[bold green]✓ Karakter '{name}' berhasil ditambahkan dan disimpan![/bold green]")
 
         elif sub == "3":
@@ -307,11 +319,22 @@ def edit_characters_interactively(project: NovelProject) -> None:
             if 1 <= del_idx <= len(characters):
                 removed = characters.pop(del_idx - 1)
                 project.save_characters(characters)
+                any_changed = True
                 console.print(f"[bold yellow]✓ Karakter '{removed.get('name')}' telah dihapus.[/bold yellow]")
 
         elif sub == "4":
             project.save_characters(characters)
             console.print("[bold green]✓ Daftar karakter berhasil disimpan![/bold green]")
+            if any_changed and llm and project.is_outline_complete():
+                if Confirm.ask(
+                    "[bold yellow]🔄 Anda baru saja mengubah karakter. Generate ulang Outline Bab oleh AI agar alur cerita memakai karakter baru?[/bold yellow]",
+                    default=True,
+                ):
+                    outliner = OutlinerAgent(llm)
+                    with console.status("[bold cyan]🗺️ Outliner Agent sedang menyusun ulang Outline Bab sesuai karakter baru...[/bold cyan]"):
+                        outliner.generate_outline(project)
+                    cleared = project.clear_chapter_beats_cache(only_undrafted=True)
+                    console.print(f"[bold green]✓ Outline Bab berhasil diperbarui sesuai karakter baru! ({cleared} cache beat lama dibersihkan)[/bold green]")
             break
 
 
@@ -525,7 +548,7 @@ def manage_foundation_studio(project: NovelProject, llm: LLMClient) -> None:
         if action == "1":
             edit_outline_and_chapters_interactively(project)
         elif action == "2":
-            edit_characters_interactively(project)
+            edit_characters_interactively(project, llm=llm)
         elif action == "3":
             edit_story_metadata_interactively(project)
         elif action == "4":
