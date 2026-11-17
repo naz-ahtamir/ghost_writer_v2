@@ -351,7 +351,21 @@ class WebBridgeManager:
 
             manager = self
 
+            class _QuietThreadingHTTPServer(ThreadingHTTPServer):
+                def handle_error(self, request: Any, client_address: Any) -> None:
+                    import sys
+                    _, exc, _ = sys.exc_info()
+                    if isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+                        return
+                    super().handle_error(request, client_address)
+
             class BridgeRequestHandler(BaseHTTPRequestHandler):
+                def _safe_write(self, data: bytes) -> None:
+                    try:
+                        self.wfile.write(data)
+                    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                        pass
+
                 def _send_cors_headers(self) -> None:
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.send_header("Access-Control-Allow-Private-Network", "true")
@@ -375,7 +389,7 @@ class WebBridgeManager:
                         self.send_header("Content-Type", "application/json; charset=utf-8")
                         self._send_cors_headers()
                         self.end_headers()
-                        self.wfile.write(payload)
+                        self._safe_write(payload)
                         return
 
                     if path == "/status":
@@ -390,7 +404,7 @@ class WebBridgeManager:
                         self.send_header("Content-Type", "application/json; charset=utf-8")
                         self._send_cors_headers()
                         self.end_headers()
-                        self.wfile.write(payload)
+                        self._safe_write(payload)
                         return
 
                     if path.endswith(".user.js"):
@@ -402,7 +416,7 @@ class WebBridgeManager:
                         self.send_header("Content-Type", "application/javascript; charset=utf-8")
                         self._send_cors_headers()
                         self.end_headers()
-                        self.wfile.write(script_bytes)
+                        self._safe_write(script_bytes)
                         return
 
                     # Default: Serve interactive dashboard HTML
@@ -411,7 +425,7 @@ class WebBridgeManager:
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self._send_cors_headers()
                     self.end_headers()
-                    self.wfile.write(html_bytes)
+                    self._safe_write(html_bytes)
 
                 def do_POST(self) -> None:
                     parsed = urlparse(self.path)
@@ -429,7 +443,7 @@ class WebBridgeManager:
                         self.send_header("Content-Type", "application/json; charset=utf-8")
                         self._send_cors_headers()
                         self.end_headers()
-                        self.wfile.write(resp_bytes)
+                        self._safe_write(resp_bytes)
                         return
 
                     if parsed.path == "/result":
@@ -448,7 +462,7 @@ class WebBridgeManager:
                         self.send_header("Content-Type", "application/json; charset=utf-8")
                         self._send_cors_headers()
                         self.end_headers()
-                        self.wfile.write(resp_bytes)
+                        self._safe_write(resp_bytes)
                         return
 
                     self.send_response(404)
@@ -462,7 +476,7 @@ class WebBridgeManager:
             preferred_port = config.WEB_BRIDGE_PORT
             for candidate_port in range(preferred_port, preferred_port + 25):
                 try:
-                    srv = ThreadingHTTPServer(("127.0.0.1", candidate_port), BridgeRequestHandler)
+                    srv = _QuietThreadingHTTPServer(("127.0.0.1", candidate_port), BridgeRequestHandler)
                     srv.daemon_threads = True
                     t = threading.Thread(target=srv.serve_forever, daemon=True)
                     t.start()
@@ -473,7 +487,7 @@ class WebBridgeManager:
                     continue
 
             # Fallback to OS-assigned ephemeral port
-            srv = ThreadingHTTPServer(("127.0.0.1", 0), BridgeRequestHandler)
+            srv = _QuietThreadingHTTPServer(("127.0.0.1", 0), BridgeRequestHandler)
             srv.daemon_threads = True
             t = threading.Thread(target=srv.serve_forever, daemon=True)
             t.start()
