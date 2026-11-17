@@ -112,6 +112,7 @@ def _build_dashboard_html(port: int) -> str:
     <div class="btn-row">
       <a class="btn btn-primary" href="/grok_web_bridge.user.js" target="_blank">⚡ Pasang Userscript Otomatis (.user.js)</a>
       <a class="btn btn-outline" href="https://grok.com" target="_blank">🌐 Buka grok.com</a>
+      <a class="btn btn-outline" href="https://openrouter.ai/chat" target="_blank">🤖 Buka OpenRouter Chat (Multi-Model Gratis)</a>
       <a class="btn btn-outline" href="https://x.com/i/grok" target="_blank">🐦 Buka x.com/i/grok</a>
     </div>
   </div>

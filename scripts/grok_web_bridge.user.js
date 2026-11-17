@@ -8,6 +8,8 @@
 // @match        https://*.grok.com/*
 // @match        https://x.com/i/grok*
 // @match        https://twitter.com/i/grok*
+// @match        https://openrouter.ai/chat*
+// @match        https://openrouter.ai/*
 // @grant        GM_xmlhttpRequest
 // @connect      127.0.0.1
 // @connect      localhost
