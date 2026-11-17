@@ -378,10 +378,13 @@ class LLMClient:
                 "invalid request:" in lowered_err
                 or "maximum context length" in lowered_err
                 or "please reduce the length of the input prompt" in lowered_err
+                or "encrypted reasoning" in lowered_err
+                or "mixed history" in lowered_err
+                or "start a new conversation" in lowered_err
             ):
                 raise RuntimeError(
-                    "Context chat di browser penuh (melebihi 131k token). "
-                    "Silakan klik 'New Chat' di tab OpenRouter/Grok lalu coba lagi."
+                    "Riwayat chat di browser tercampur antar-provider / penuh. "
+                    "Silakan klik 'New Chat' (Obrolan Baru) di tab OpenRouter/Grok lalu pilih Coba Lagi."
                 )
             est_prompt_tokens = max(1, len(active_prompt) // 4)
             est_comp_tokens = max(1, len(content) // 4)

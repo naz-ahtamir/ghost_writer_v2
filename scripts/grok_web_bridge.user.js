@@ -334,14 +334,27 @@
     }
 
     async function tryStartNewChatIfNeeded(prevMsgCount) {
-        if (prevMsgCount < 2) return false;
-        const buttons = Array.from(document.querySelectorAll('button'));
-        for (const btn of buttons) {
-            const txt = (btn.innerText || btn.getAttribute('aria-label') || btn.getAttribute('title') || '').trim().toLowerCase();
+        const bodyLow = (document.body?.innerText || '').toLowerCase();
+        const hasMixedErr =
+            bodyLow.includes('encrypted reasoning') ||
+            bodyLow.includes('start a new conversation') ||
+            bodyLow.includes('maximum context length');
+        if (prevMsgCount < 1 && !hasMixedErr) return false;
+
+        const candidates = Array.from(document.querySelectorAll('button, [role="button"]'));
+        for (const btn of candidates) {
+            const txt = (
+                btn.innerText ||
+                btn.getAttribute('aria-label') ||
+                btn.getAttribute('title') ||
+                btn.getAttribute('data-testid') ||
+                ''
+            ).trim().toLowerCase();
             if (
                 txt === 'new chat' ||
                 txt === 'new' ||
                 txt.includes('new chat') ||
+                txt.includes('new-chat') ||
                 txt.includes('obrolan baru')
             ) {
                 const rect = btn.getBoundingClientRect();
@@ -360,7 +373,10 @@
         return (
             low.includes('invalid request:') ||
             low.includes('maximum context length') ||
-            low.includes('please reduce the length of the input prompt')
+            low.includes('please reduce the length of the input prompt') ||
+            low.includes('encrypted reasoning') ||
+            low.includes('mixed history') ||
+            low.includes('start a new conversation')
         );
     }
 
