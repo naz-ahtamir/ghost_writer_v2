@@ -40,7 +40,7 @@ else:
 # Supported Providers: "grok", "grok_web", "openrouter", or "gemini"
 SUPPORTED_PROVIDERS = ("grok", "grok_web", "openrouter", "gemini")
 KEYLESS_PROVIDERS = ("grok_web",)
-DEFAULT_PROVIDER = os.getenv("AI_PROVIDER", "grok").lower()
+DEFAULT_PROVIDER = os.getenv("AI_PROVIDER", "grok_web").lower()
 WEB_BRIDGE_PORT = int(os.getenv("WEB_BRIDGE_PORT", "8788"))
 
 GROK_MODELS = [
@@ -57,11 +57,12 @@ GROK_TOKEN_CONTEXT_LIMIT = int(os.getenv("GROK_TOKEN_CONTEXT_LIMIT", "200000"))
 GROK_TOKEN_WARN_THRESHOLD = int(os.getenv("GROK_TOKEN_WARN_THRESHOLD", "160000"))
 
 GROK_WEB_MODELS = [
+    "nousresearch/hermes-4-405b",
+    "sao10k/l3.1-euryale-70b",
     "grok-3-web",
     "grok-3-thinking-web",
-    "grok-2-web",
 ]
-DEFAULT_GROK_WEB_MODEL = os.getenv("GROK_WEB_MODEL", "grok-3-web")
+DEFAULT_GROK_WEB_MODEL = os.getenv("GROK_WEB_MODEL", "nousresearch/hermes-4-405b")
 
 OPENROUTER_MODELS = [
     "nousresearch/hermes-4-405b",
@@ -166,9 +167,9 @@ def is_keyless_provider(provider: str = None) -> bool:
 
 
 def get_provider() -> str:
-    """Retrieve current AI provider (grok, grok_web, openrouter, or gemini)."""
-    p = os.getenv("AI_PROVIDER", "grok").strip().lower()
-    return p if p in SUPPORTED_PROVIDERS else "grok"
+    """Retrieve current AI provider (grok_web, grok, openrouter, or gemini)."""
+    p = os.getenv("AI_PROVIDER", "grok_web").strip().lower()
+    return p if p in SUPPORTED_PROVIDERS else "grok_web"
 
 
 def get_api_key(provider: str = None) -> str:

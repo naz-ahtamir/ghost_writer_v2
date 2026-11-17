@@ -111,9 +111,9 @@ def _build_dashboard_html(port: int) -> str:
     </ol>
     <div class="btn-row">
       <a class="btn btn-primary" href="/grok_web_bridge.user.js" target="_blank">⚡ Pasang Userscript Otomatis (.user.js)</a>
-      <a class="btn btn-outline" href="https://grok.com" target="_blank">🌐 Buka grok.com</a>
-      <a class="btn btn-outline" href="https://openrouter.ai/chat" target="_blank">🤖 Buka OpenRouter Chat (Multi-Model Gratis)</a>
-      <a class="btn btn-outline" href="https://x.com/i/grok" target="_blank">🐦 Buka x.com/i/grok</a>
+      <a class="btn btn-success" href="https://openrouter.ai/chat?models=nousresearch/hermes-4-405b" target="_blank">🤖 1. OpenRouter: NousResearch (Prioritas 1)</a>
+      <a class="btn btn-outline" href="https://openrouter.ai/chat?models=sao10k/l3.1-euryale-70b" target="_blank">🎭 2. OpenRouter: Sao10k Euryale (Prioritas 2)</a>
+      <a class="btn btn-outline" href="https://grok.com" target="_blank">🌐 Grok Web</a>
     </div>
   </div>
 

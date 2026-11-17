@@ -38,7 +38,7 @@ def _get_provider_display_name(provider: str) -> str:
     """Return human-readable label for AI provider."""
     return {
         "grok": "xAI Grok (API)",
-        "grok_web": "xAI Grok Web (Gratis / Tanpa API Key)",
+        "grok_web": "Web AI Bridge (OpenRouter NousResearch / Sao10k / Grok Web - Gratis)",
         "openrouter": "OpenRouter (Hermes 4/3)",
         "gemini": "Google Gemini",
     }.get(provider.lower(), provider)

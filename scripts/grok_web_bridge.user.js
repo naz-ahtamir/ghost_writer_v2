@@ -134,6 +134,29 @@
         box.appendChild(dot);
         box.appendChild(label);
         box.appendChild(forceBtn);
+
+        if (window.location.hostname.includes('openrouter.ai')) {
+            const switchBtn = document.createElement('button');
+            const isSao = window.location.href.includes('sao10k');
+            switchBtn.textContent = isSao ? 'P1: Nous' : 'P2: Sao10k';
+            switchBtn.style.cssText = [
+                'background:#312e81',
+                'color:#e0e7ff',
+                'border:1px solid #6366f1',
+                'border-radius:6px',
+                'padding:3px 8px',
+                'cursor:pointer',
+                'font-size:11px',
+            ].join(';');
+            switchBtn.onclick = () => {
+                const targetModel = isSao
+                    ? 'nousresearch/hermes-4-405b'
+                    : 'sao10k/l3.1-euryale-70b';
+                window.location.href = `https://openrouter.ai/chat?models=${encodeURIComponent(targetModel)}`;
+            };
+            box.appendChild(switchBtn);
+        }
+
         box.appendChild(toggleBtn);
         document.body.appendChild(box);
     }
