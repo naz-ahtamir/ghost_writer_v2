@@ -47,7 +47,19 @@ def select_chapter_info(project: NovelProject, llm: Optional[LLMClient] = None) 
             default_ch = ch.get("chapter_number", 1)
             break
 
-    ch_num = IntPrompt.ask("\n[bold cyan]Pilih Nomor Bab[/bold cyan]", default=default_ch)
+    raw_ch = Prompt.ask(
+        "\n[bold cyan]Pilih Nomor Bab (atau ketik 'b' / '0' untuk Kembali)[/bold cyan]",
+        default=str(default_ch),
+    ).strip()
+    if raw_ch.lower() in ("b", "batal", "kembali", "back", "0"):
+        return {}
+    try:
+        ch_num = int(raw_ch)
+    except ValueError:
+        console.print("[yellow]Nomor bab tidak valid, kembali ke menu.[/yellow]")
+        return {}
+    if ch_num <= 0:
+        return {}
     for ch in chapters:
         if ch.get("chapter_number") == ch_num:
             return ch
@@ -297,11 +309,20 @@ def write_chapter_flow(project: NovelProject, llm: LLMClient) -> None:
         )
     else:
         custom_direction = Prompt.ask(
-            "\n[bold yellow]Arahan Bebas / Skenario Khusus Bab Ini[/bold yellow] [dim](opsional: tulis adegan/konflik/momen spesifik yang wajib ada, atau tekan Enter)[/dim]",
+            "\n[bold yellow]Arahan Bebas / Skenario Khusus Bab Ini[/bold yellow] [dim](opsional, atau ketik 'b' untuk Kembali)[/dim]",
             default="",
         ).strip()
-        with console.status(f"[bold cyan]📋 Scene Planner Agent sedang merancang ketukan adegan (beats) untuk Bab {ch_num}...[/bold cyan]"):
-            beats = planner.generate_beats(project, ch_info, custom_direction=custom_direction)
+        if custom_direction.lower() in ("b", "batal", "kembali", "back"):
+            return
+        while True:
+            try:
+                with console.status(f"[bold cyan]📋 Scene Planner Agent sedang merancang ketukan adegan (beats) untuk Bab {ch_num}...[/bold cyan]"):
+                    beats = planner.generate_beats(project, ch_info, custom_direction=custom_direction)
+                break
+            except Exception as e:
+                console.print(f"\n[bold red]❌ Gagal merancang Beat Bab {ch_num}:[/bold red] {e}")
+                if not Confirm.ask("[bold yellow]🔄 Coba lagi merancang Beat sekarang?[/bold yellow]", default=True):
+                    return
 
     # Interactive Beat, Chapter Plan, Character & Writing Mode Loop
     beat_by_beat_mode = False

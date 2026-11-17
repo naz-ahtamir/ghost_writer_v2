@@ -303,6 +303,58 @@
         return new Promise((r) => setTimeout(r, ms));
     }
 
+    async function postResultWithRetry(taskId, payloadObj) {
+        try {
+            localStorage.setItem('gw_last_result', JSON.stringify({ id: taskId, ...payloadObj, ts: Date.now() }));
+        } catch (_) {}
+
+        let lastErr = null;
+        for (let i = 0; i < 5; i++) {
+            try {
+                await bridgeRequest('POST', '/result', { id: taskId, ...payloadObj });
+                return true;
+            } catch (err) {
+                lastErr = err;
+                try {
+                    const r = await fetch(`${getBaseUrl()}/result`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: taskId, ...payloadObj }),
+                    });
+                    if (r.ok) return true;
+                } catch (_) {}
+                updateStatus(`Koneksi Termux terputus, coba kirim ulang (${i + 1}/5)...`, '#f59e0b');
+                await sleep(1500);
+            }
+        }
+        throw lastErr || new Error('Gagal mengirim hasil ke Termux setelah 5 percobaan.');
+    }
+
+    function looksLikeCompleteJson(text) {
+        const cleaned = (text || '').replace(/```json|```/gi, '').trim();
+        const firstBrace = cleaned.indexOf('{');
+        const firstBracket = cleaned.indexOf('[');
+        let start = -1;
+        if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) start = firstBrace;
+        else if (firstBracket !== -1) start = firstBracket;
+        if (start === -1) return false;
+        const sub = cleaned.slice(start);
+        let depth = 0;
+        let inStr = false;
+        let esc = false;
+        for (const ch of sub) {
+            if (esc) { esc = false; continue; }
+            if (ch === '\\') { esc = true; continue; }
+            if (ch === '"') { inStr = !inStr; continue; }
+            if (!inStr) {
+                if (ch === '{' || ch === '[') depth += 1;
+                else if (ch === '}' || ch === ']') depth -= 1;
+                if (depth === 0) return true;
+            }
+        }
+        return false;
+    }
+
     async function submitPrompt(inputEl) {
         for (let attempt = 0; attempt < 4; attempt++) {
             const sendBtn = findSendButton();
@@ -448,7 +500,8 @@
 
                     updateStatus(`Menerima (${lastSeenText.length} huruf)...`, '#a855f7');
 
-                    if (stableTicks >= 6 && lastSeenText.trim().length > 0) {
+                    const jsonReady = !task.is_json || looksLikeCompleteJson(lastSeenText) || stableTicks >= 20;
+                    if (stableTicks >= 8 && jsonReady && lastSeenText.trim().length > 0) {
                         break;
                     }
                 }
@@ -470,10 +523,7 @@
                 throw new Error(`Model menolak karena batas konteks/request: ${lastSeenText.slice(0, 180)}`);
             }
 
-            await bridgeRequest('POST', '/result', {
-                id: task.id,
-                content: lastSeenText.trim(),
-            });
+            await postResultWithRetry(task.id, { content: lastSeenText.trim() });
 
             isBusy = false;
             forceSendRequested = false;
@@ -483,10 +533,7 @@
             forceSendRequested = false;
             updateStatus(`Kendala: ${err.message}`, '#ef4444');
             try {
-                await bridgeRequest('POST', '/result', {
-                    id: task.id,
-                    error: err.message || String(err),
-                });
+                await postResultWithRetry(task.id, { error: err.message || String(err) });
             } catch (_) {}
         } finally {
             isBusy = false;

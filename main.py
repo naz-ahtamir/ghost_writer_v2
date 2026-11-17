@@ -575,80 +575,97 @@ def main() -> None:
         console.print("  [bold white]9.[/bold white] ⚙️ Pengaturan AI (Grok / Gemini / Engine Ilustrasi)")
         console.print("  [bold white]10.[/bold white] 🚪 Keluar")
 
-        choice = Prompt.ask(
-            "\n[bold green]Pilih opsi (1-10)[/bold green]",
-            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-            default="1",
-        )
+        try:
+            choice = Prompt.ask(
+                "\n[bold green]Pilih opsi (1-10)[/bold green] [dim](Tekan Ctrl+C kapan saja di submenu untuk kembali ke Menu Utama)[/dim]",
+                choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+                default="1",
+            )
+        except KeyboardInterrupt:
+            console.print("\n[dim]Ketik '10' untuk keluar dari aplikasi.[/dim]")
+            continue
 
-        if choice == "1":
-            try:
-                created = run_new_novel_wizard(llm)
-                if created is not None:
-                    current_project = created
+        try:
+            if choice == "1":
+                try:
+                    created = run_new_novel_wizard(llm)
+                    if created is not None:
+                        current_project = created
+                        llm.bind_project(current_project)
+                except KeyboardInterrupt:
+                    raise
+                except Exception as e:
+                    console.print(f"[bold red]Terjadi kesalahan saat membuat novel:[/bold red] {e}")
+
+            elif choice == "2":
+                current_project = select_existing_project(llm, current_project)
+                if current_project is not None:
                     llm.bind_project(current_project)
-            except Exception as e:
-                console.print(f"[bold red]Terjadi kesalahan saat membuat novel:[/bold red] {e}")
 
-        elif choice == "2":
-            current_project = select_existing_project(llm, current_project)
-            if current_project is not None:
-                llm.bind_project(current_project)
+            elif choice == "3":
+                if not current_project:
+                    console.print("[yellow]Buka atau buat proyek novel terlebih dahulu (Opsi 1 atau 2).[/yellow]")
+                else:
+                    try:
+                        write_chapter_flow(current_project, llm)
+                    except KeyboardInterrupt:
+                        raise
+                    except Exception as e:
+                        console.print(f"[bold red]Terjadi kesalahan saat menulis bab:[/bold red] {e}")
 
-        elif choice == "3":
-            if not current_project:
-                console.print("[yellow]Buka atau buat proyek novel terlebih dahulu (Opsi 1 atau 2).[/yellow]")
-            else:
-                try:
-                    write_chapter_flow(current_project, llm)
-                except Exception as e:
-                    console.print(f"[bold red]Terjadi kesalahan saat menulis bab:[/bold red] {e}")
+            elif choice == "4":
+                if not current_project:
+                    console.print("[yellow]Buka atau buat proyek novel terlebih dahulu (Opsi 1 atau 2).[/yellow]")
+                else:
+                    try:
+                        illustrate_chapter_flow(current_project, llm)
+                    except KeyboardInterrupt:
+                        raise
+                    except Exception as e:
+                        console.print(f"[bold red]Terjadi kesalahan saat mengelola ilustrasi bab:[/bold red] {e}")
 
-        elif choice == "4":
-            if not current_project:
-                console.print("[yellow]Buka atau buat proyek novel terlebih dahulu (Opsi 1 atau 2).[/yellow]")
-            else:
-                try:
-                    illustrate_chapter_flow(current_project, llm)
-                except Exception as e:
-                    console.print(f"[bold red]Terjadi kesalahan saat mengelola ilustrasi bab:[/bold red] {e}")
+            elif choice == "5":
+                if not current_project:
+                    console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
+                else:
+                    try:
+                        audit_chapter_flow(current_project, llm)
+                    except KeyboardInterrupt:
+                        raise
+                    except Exception as e:
+                        console.print(f"[bold red]Terjadi kesalahan saat audit bab:[/bold red] {e}")
 
-        elif choice == "5":
-            if not current_project:
-                console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
-            else:
-                try:
-                    audit_chapter_flow(current_project, llm)
-                except Exception as e:
-                    console.print(f"[bold red]Terjadi kesalahan saat audit bab:[/bold red] {e}")
+            elif choice == "6":
+                if not current_project:
+                    console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
+                else:
+                    view_chapter_flow(current_project)
 
-        elif choice == "6":
-            if not current_project:
-                console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
-            else:
-                view_chapter_flow(current_project)
+            elif choice == "7":
+                if not current_project:
+                    console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
+                else:
+                    show_world_and_characters(current_project, llm)
 
-        elif choice == "7":
-            if not current_project:
-                console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
-            else:
-                show_world_and_characters(current_project, llm)
+            elif choice == "8":
+                if not current_project:
+                    console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
+                else:
+                    try:
+                        export_novel_flow(current_project)
+                    except KeyboardInterrupt:
+                        raise
+                    except Exception as e:
+                        console.print(f"[bold red]Terjadi kesalahan saat ekspor:[/bold red] {e}")
 
-        elif choice == "8":
-            if not current_project:
-                console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
-            else:
-                try:
-                    export_novel_flow(current_project)
-                except Exception as e:
-                    console.print(f"[bold red]Terjadi kesalahan saat ekspor:[/bold red] {e}")
+            elif choice == "9":
+                manage_settings(llm)
 
-        elif choice == "9":
-            manage_settings(llm)
-
-        elif choice == "10":
-            console.print("\n[bold cyan]Terima kasih telah menggunakan GhostWriter AI! Selamat berkarya.[/bold cyan] 🖋️\n")
-            break
+            elif choice == "10":
+                console.print("\n[bold cyan]Terima kasih telah menggunakan GhostWriter AI! Selamat berkarya.[/bold cyan] 🖋️\n")
+                break
+        except KeyboardInterrupt:
+            console.print("\n[bold yellow]↩️ Aksi dibatalkan. Kembali ke Menu Utama.[/bold yellow]")
 
         console.print("\n" + "─" * 60 + "\n")
 

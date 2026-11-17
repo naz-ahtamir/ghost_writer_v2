@@ -765,8 +765,11 @@ def run_new_novel_wizard(llm: LLMClient) -> Optional[NovelProject]:
     console.print("[bold cyan]Pilih Sumber Ide Novel Anda:[/bold cyan]")
     console.print("  [bold green]1.[/bold green] ✍️ Buat dari Ide / Premis Manual")
     console.print("  [bold yellow]2.[/bold yellow] 📄 Upload / Impor File Artikel atau Dokumen (.txt, .md, .docx, .pdf, atau Paste Artikel)")
+    console.print("  [bold red]3.[/bold red] 🔙 Kembali ke Menu Utama")
 
-    mode = Prompt.ask("\nPilih metode (1/2)", choices=["1", "2"], default="1")
+    mode = Prompt.ask("\nPilih metode (1-3)", choices=["1", "2", "3"], default="1")
+    if mode == "3":
+        return None
     if mode == "2":
         return run_article_to_novel_wizard(llm)
 
