@@ -233,16 +233,17 @@
         return false;
     }
 
-    // Collect all visible assistant message blocks in the conversation (filtering out user prompt echoes)
+    // Collect all visible assistant message blocks in the conversation (filtering out user prompt echoes and outer wrappers)
     function getAssistantMessages(promptText = '') {
         const promptHead = (promptText || '').trim().slice(0, 60);
         const isEcho = (txt) => promptHead.length > 15 && txt.includes(promptHead);
         const candidates = [];
 
-        // Prefer structured markdown/prose containers first
+        // Prefer structured markdown/prose leaf containers first
         const proseEls = Array.from(
             document.querySelectorAll('.prose, .markdown, [class*="markdown-content" i], [data-message-author-role="assistant"]')
-        );
+        ).filter((el) => !el.querySelector('.prose, [data-message-author-role="assistant"]'));
+
         for (const el of proseEls) {
             const txt = (el.innerText || '').trim();
             if (txt.length > 0 && !isEcho(txt)) {
@@ -429,7 +430,9 @@
                         lastSeenText = latestText;
                     }
 
-                    if (stableTicks >= 3 && lastSeenText.trim().length > 0) {
+                    updateStatus(`Menerima (${lastSeenText.length} huruf)...`, '#a855f7');
+
+                    if (stableTicks >= 6 && lastSeenText.trim().length > 0) {
                         break;
                     }
                 }
