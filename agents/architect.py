@@ -13,9 +13,20 @@ class ArchitectAgent:
         self.llm = llm
 
     def generate_world_bible(self, project: NovelProject) -> Dict[str, Any]:
-        """Generate a complete world bible based on project metadata."""
+        """Generate a complete world bible based on project metadata and existing characters."""
         meta = project.metadata
         lang = meta.get("language", "Indonesian")
+
+        characters_section = ""
+        if project.characters:
+            char_lines = []
+            for c in project.characters:
+                name = c.get("name", "Tanpa Nama")
+                role = c.get("role", "Tokoh")
+                goal = c.get("external_goal", "")
+                backstory = c.get("backstory", "")
+                char_lines.append(f"- {name} ({role}): Tujuan: {goal} | Latar Belakang: {backstory}")
+            characters_section = "\nDaftar Karakter Aktif (Wajib dijadikan acuan latar & lore):\n" + "\n".join(char_lines)
 
         system_prompt = ARCHITECT_SYSTEM.format(language=lang)
         user_prompt = ARCHITECT_USER_TEMPLATE.format(
@@ -24,6 +35,7 @@ class ArchitectAgent:
             tone=meta.get("tone", "Misterius dan Epik"),
             premise=meta.get("premise", ""),
             target_audience=meta.get("target_audience", "Umum"),
+            characters_section=characters_section,
         )
 
         world_data = self.llm.generate_json(

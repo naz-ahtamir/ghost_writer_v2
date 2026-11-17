@@ -325,9 +325,18 @@ def edit_characters_interactively(project: NovelProject, llm: Optional[LLMClient
         elif sub == "4":
             project.save_characters(characters)
             console.print("[bold green]✓ Daftar karakter berhasil disimpan![/bold green]")
-            if any_changed and llm and project.is_outline_complete():
-                if Confirm.ask(
-                    "[bold yellow]🔄 Anda baru saja mengubah karakter. Generate ulang Outline Bab oleh AI agar alur cerita memakai karakter baru?[/bold yellow]",
+            if any_changed and llm:
+                if project.is_world_bible_complete() and Confirm.ask(
+                    "[bold yellow]🏛️ Generate ulang World Bible oleh AI agar latar & lore sesuai dengan karakter baru?[/bold yellow]",
+                    default=False,
+                ):
+                    architect = ArchitectAgent(llm)
+                    with console.status("[bold cyan]🏛️ Architect Agent sedang menyusun ulang World Bible sesuai karakter baru...[/bold cyan]"):
+                        architect.generate_world_bible(project)
+                    console.print("[bold green]✓ World Bible berhasil diperbarui sesuai karakter baru![/bold green]")
+
+                if project.is_outline_complete() and Confirm.ask(
+                    "[bold yellow]🔄 Generate ulang Outline Bab oleh AI agar alur cerita memakai karakter baru?[/bold yellow]",
                     default=True,
                 ):
                     outliner = OutlinerAgent(llm)

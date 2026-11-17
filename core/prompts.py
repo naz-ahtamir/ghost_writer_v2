@@ -53,6 +53,9 @@ Genre: {genre}
 Tone / Nada: {tone}
 Premis: {premise}
 Target Pembaca: {target_audience}
+{characters_section}
+
+Pastikan latar, faksi, aturan dunia, dan sejarah/lore terhubung erat dengan premis serta karakter-karakter di atas (jika sudah ada).
 
 Hasilkan output dalam format JSON dengan struktur:
 {{
