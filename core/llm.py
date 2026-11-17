@@ -359,9 +359,9 @@ class LLMClient:
             from core.web_bridge import execute_web_grok_request
 
             active_prompt = prompt
-            if len(active_prompt) > 400000:
-                safe_log("[Grok Web] ⚠️ Teks prompt sangat besar (>400k karakter), memangkas bagian tengah teks...")
-                active_prompt = self.prune_context(active_prompt, max_chars=360000)
+            if len(active_prompt) > 120000:
+                safe_log("[Web AI Bridge] ⚠️ Teks prompt sangat besar (>120k karakter), memangkas bagian tengah teks agar aman di batas 131k token...")
+                active_prompt = self.prune_context(active_prompt, max_chars=100000)
 
             raw_content = execute_web_grok_request(
                 prompt=active_prompt,
@@ -373,6 +373,16 @@ class LLMClient:
             )
 
             content = re.sub(r"<think>[\s\S]*?</think>", "", raw_content or "").strip()
+            lowered_err = content.lower()
+            if (
+                "invalid request:" in lowered_err
+                or "maximum context length" in lowered_err
+                or "please reduce the length of the input prompt" in lowered_err
+            ):
+                raise RuntimeError(
+                    "Context chat di browser penuh (melebihi 131k token). "
+                    "Silakan klik 'New Chat' di tab OpenRouter/Grok lalu coba lagi."
+                )
             est_prompt_tokens = max(1, len(active_prompt) // 4)
             est_comp_tokens = max(1, len(content) // 4)
             est_total = est_prompt_tokens + est_comp_tokens

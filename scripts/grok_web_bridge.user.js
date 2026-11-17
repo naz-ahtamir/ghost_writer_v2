@@ -332,6 +332,37 @@
         return false;
     }
 
+    async function tryStartNewChatIfNeeded(prevMsgCount) {
+        if (prevMsgCount < 2) return false;
+        const buttons = Array.from(document.querySelectorAll('button'));
+        for (const btn of buttons) {
+            const txt = (btn.innerText || btn.getAttribute('aria-label') || btn.getAttribute('title') || '').trim().toLowerCase();
+            if (
+                txt === 'new chat' ||
+                txt === 'new' ||
+                txt.includes('new chat') ||
+                txt.includes('obrolan baru')
+            ) {
+                const rect = btn.getBoundingClientRect();
+                if (rect.width > 10 && rect.height > 10 && !btn.disabled) {
+                    btn.click();
+                    await sleep(900);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function isProviderErrorText(text) {
+        const low = (text || '').toLowerCase();
+        return (
+            low.includes('invalid request:') ||
+            low.includes('maximum context length') ||
+            low.includes('please reduce the length of the input prompt')
+        );
+    }
+
     async function executeTask(task) {
         isBusy = true;
         forceSendRequested = false;
@@ -339,12 +370,17 @@
         updateStatus(`Menulis Prompt #${task.id.slice(0, 6)}...`, '#38bdf8');
 
         try {
-            const inputEl = findChatInput();
-            if (!inputEl) {
-                throw new Error('Kotak input chat Grok tidak ditemukan. Pastikan Anda sudah login di halaman chat grok.com.');
+            let beforeMessages = getAssistantMessages(task.prompt);
+            // Reset to a fresh chat thread if old history exists so 131k context never overflows
+            if (await tryStartNewChatIfNeeded(beforeMessages.length)) {
+                beforeMessages = getAssistantMessages(task.prompt);
             }
 
-            const beforeMessages = getAssistantMessages(task.prompt);
+            const inputEl = findChatInput();
+            if (!inputEl) {
+                throw new Error('Kotak input chat tidak ditemukan. Pastikan Anda sudah login di halaman chat.');
+            }
+
             const prevCount = beforeMessages.length;
             const prevLastText = prevCount > 0 ? beforeMessages[prevCount - 1] : '';
 
@@ -409,7 +445,10 @@
             }
 
             if (!lastSeenText || lastSeenText.trim().length === 0) {
-                throw new Error('Waktu tunggu habis atau teks balasan Grok tidak terdeteksi di halaman.');
+                throw new Error('Waktu tunggu habis atau teks balasan AI tidak terdeteksi di halaman.');
+            }
+            if (isProviderErrorText(lastSeenText)) {
+                throw new Error(`Model menolak karena batas konteks/request: ${lastSeenText.slice(0, 180)}`);
             }
 
             await bridgeRequest('POST', '/result', {
