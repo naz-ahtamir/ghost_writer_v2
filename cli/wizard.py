@@ -264,35 +264,58 @@ def _manage_characters_with_notes(project: NovelProject, llm: LLMClient) -> None
             console.print(f"[bold green]✓ Outline Bab diperbarui! ({cleared} cache beat lama dibersihkan)[/bold green]")
 
 
+def _render_studio_tabs(active_tab: str = "0") -> None:
+    """Render a visual tab bar and indented scope hierarchy (Luas -> Setara -> Detail)."""
+    tabs = [
+        ("1", "🌍 Premis"),
+        ("2", "🏛️ World"),
+        ("3", "👥 Karakter"),
+        ("4", "🗺️ Outline"),
+        ("5", "✍️ Bab & Beat"),
+    ]
+    bar_parts = []
+    for key, label in tabs:
+        if key == active_tab:
+            bar_parts.append(f"[bold black on cyan] {key}. {label} [/bold black on cyan]")
+        else:
+            bar_parts.append(f"[dim cyan][{key}. {label}][/dim cyan]")
+    console.print(" ➔ ".join(bar_parts))
+
+
 def manage_foundation_studio(project: NovelProject, llm: LLMClient) -> None:
     """Unified hierarchical studio ordered from broadest scope (Premise) to finest detail (Chapter Beats)."""
+    active_tab = "0"
     while True:
         meta = project.metadata
         wb = project.world_bible
         console.print("\n")
         print_header(
-            f"📋 Studio Cerita (Luas → Detail): {meta.get('title', 'Novel')}",
-            "Cukup beri catatan perbaikan ke AI — perubahan di atas dapat otomatis memperbarui bagian di bawahnya",
+            f"📋 Studio Cerita (Tab Hierarki Luas → Detail): {meta.get('title', 'Novel')}",
+            "Cukup beri catatan perbaikan ke AI — perubahan di level atas otomatis menawarkan update level di bawahnya",
         )
-        console.print(Panel(
-            f"[bold cyan]1. Premis:[/bold cyan] {meta.get('premise', '-')}\n"
-            f"[bold green]2. World Bible:[/bold green] {wb.get('setting_name', 'Belum ada')} — {wb.get('core_concept', '-')}\n"
-            f"[bold yellow]3. Karakter:[/bold yellow] {len(project.characters)} tokoh\n"
-            f"[bold magenta]4. Outline Bab:[/bold magenta] {len(project.outline.get('chapters', []))} bab ({len(project.list_drafted_chapters())} bab sudah ditulis)",
-            title="📌 Posisi Fondasi Saat Ini",
-            border_style="cyan",
-        ))
+        _render_studio_tabs(active_tab)
+        console.print("")
 
-        console.print("[bold cyan]Pilih Level yang Ingin Diubah / Dikerjakan (Urut Luas → Detail):[/bold cyan]")
-        console.print("  [bold green]1.[/bold green] 🌍 [bold]Premis & Konsep Utama[/bold] (Ubah premis/genre/tone → tawarkan update World, Karakter, Outline)")
-        console.print("  [bold green]2.[/bold green] 🏛️ [bold]World Bible[/bold] (Generate ulang dengan catatan AI → tawarkan update Karakter & Outline)")
-        console.print("  [bold green]3.[/bold green] 👥 [bold]Karakter (Per Karakter)[/bold] (Generate ulang 1 karakter dengan catatan AI → tawarkan update Outline)")
-        console.print("  [bold green]4.[/bold green] 🗺️ [bold]Outline Bab[/bold] (Generate ulang Outline dengan catatan AI)")
-        console.print("  [bold magenta]5.[/bold magenta] ✍️ [bold]Isi Bab & Beat (Per Beat)[/bold] (Tulis / generate ulang 1 Beat tertentu dengan catatan AI)")
-        console.print("  [bold yellow]6.[/bold yellow] 👁️ Lihat Detail World Bible, Tabel Karakter & Daftar Bab")
-        console.print("  [bold cyan]0.[/bold cyan] 🔙 Kembali ke Menu Utama")
+        premise_preview = (meta.get("premise", "-") or "-")
+        if len(premise_preview) > 120:
+            premise_preview = premise_preview[:117] + "..."
 
-        action = Prompt.ask("\n[bold green]Pilih menu (0-6)[/bold green]", choices=["0", "1", "2", "3", "4", "5", "6"], default="0")
+        tree_lines = (
+            f"[bold cyan]1. 🌍 Premis & Konsep[/bold cyan] [dim](Cakupan Paling Luas)[/dim]\n"
+            f"   [white]{premise_preview}[/white]\n"
+            f"   │\n"
+            f"   ├── [bold green]2. 🏛️ World Bible[/bold green] [dim](Setara Karakter)[/dim] → {wb.get('setting_name', 'Belum ada')}\n"
+            f"   └── [bold yellow]3. 👥 Karakter[/bold yellow] [dim](Setara World Bible, Per-Karakter)[/dim] → {len(project.characters)} tokoh\n"
+            f"          │\n"
+            f"          └── [bold magenta]4. 🗺️ Outline Bab[/bold magenta] [dim](Alur Makro)[/dim] → {len(project.outline.get('chapters', []))} bab\n"
+            f"                 │\n"
+            f"                 └── [bold white]5. ✍️ Isi Bab & Beat[/bold white] [dim](Detail Per-Beat)[/dim] → {len(project.list_drafted_chapters())} bab ditulis\n\n"
+            f"   [bold yellow]6.[/bold yellow] 👁️ Lihat Detail Lengkap   |   [bold cyan]0.[/bold cyan] 🔙 Kembali ke Menu Utama"
+        )
+        console.print(Panel(tree_lines, title="🗂️ Peta Scope & Tab Navigasi", border_style="cyan"))
+
+        action = Prompt.ask("\n[bold green]Pilih Tab / Menu (0-6)[/bold green]", choices=["0", "1", "2", "3", "4", "5", "6"], default="0")
+        active_tab = action
 
         if action == "0":
             break
