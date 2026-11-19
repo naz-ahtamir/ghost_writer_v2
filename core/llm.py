@@ -359,9 +359,9 @@ class LLMClient:
             from core.web_bridge import execute_web_grok_request
 
             active_prompt = prompt
-            if len(active_prompt) > 120000:
-                safe_log("[Web AI Bridge] ⚠️ Teks prompt sangat besar (>120k karakter), memangkas bagian tengah teks agar aman di batas 131k token...")
-                active_prompt = self.prune_context(active_prompt, max_chars=100000)
+            if len(active_prompt) > 80000:
+                safe_log("[Web AI Bridge] ⚠️ Teks prompt sangat besar (>80k karakter), memangkas bagian tengah teks agar aman di batas 131k token...")
+                active_prompt = self.prune_context(active_prompt, max_chars=70000)
 
             raw_content = execute_web_grok_request(
                 prompt=active_prompt,

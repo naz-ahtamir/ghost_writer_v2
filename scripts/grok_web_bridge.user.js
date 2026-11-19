@@ -409,15 +409,18 @@
         return false;
     }
 
-    async function tryStartNewChatIfNeeded(prevMsgCount) {
+    async function tryStartNewChatIfNeeded(task, prevMsgCount, skipNewChat = false) {
+        if (skipNewChat) return false;
         const bodyLow = (document.body?.innerText || '').toLowerCase();
+        const hasDomMsgs = document.querySelectorAll('.prose, [data-message-author-role]').length >= 1;
         const hasMixedErr =
             bodyLow.includes('encrypted reasoning') ||
             bodyLow.includes('start a new conversation') ||
-            bodyLow.includes('maximum context length');
-        if (prevMsgCount < 1 && !hasMixedErr) return false;
+            bodyLow.includes('maximum context length') ||
+            bodyLow.includes('invalid request:');
+        if (prevMsgCount < 1 && !hasDomMsgs && !hasMixedErr) return false;
 
-        const candidates = Array.from(document.querySelectorAll('button, [role="button"]'));
+        const candidates = Array.from(document.querySelectorAll('button, [role="button"], a[href="/chat"], a[href^="/chat?"]'));
         for (const btn of candidates) {
             const txt = (
                 btn.innerText ||
@@ -426,22 +429,39 @@
                 btn.getAttribute('data-testid') ||
                 ''
             ).trim().toLowerCase();
+            const href = (btn.getAttribute('href') || '').toLowerCase();
             if (
                 txt === 'new chat' ||
                 txt === 'new' ||
                 txt.includes('new chat') ||
                 txt.includes('new-chat') ||
-                txt.includes('obrolan baru')
+                txt.includes('obrolan baru') ||
+                href === '/chat'
             ) {
                 const rect = btn.getBoundingClientRect();
                 if (rect.width > 10 && rect.height > 10 && !btn.disabled) {
+                    if (btn.tagName.toLowerCase() === 'a') {
+                        try { sessionStorage.setItem('gw_pending_task', JSON.stringify(task)); } catch (_) {}
+                    }
                     btn.click();
                     await sleep(900);
-                    return true;
+                    break;
                 }
             }
         }
-        return false;
+
+        // If DOM still has old messages on OpenRouter, force clean chat URL via sessionStorage handoff
+        const stillHasMsgs = document.querySelectorAll('.prose, [data-message-author-role]').length >= 1;
+        if (stillHasMsgs && window.location.hostname.includes('openrouter.ai')) {
+            try {
+                sessionStorage.setItem('gw_pending_task', JSON.stringify(task));
+                const isSao = window.location.href.includes('sao10k');
+                const model = isSao ? 'sao10k/l3.1-euryale-70b' : 'nousresearch/hermes-4-405b';
+                window.location.href = `https://openrouter.ai/chat?models=${encodeURIComponent(model)}`;
+                await sleep(5000);
+            } catch (_) {}
+        }
+        return true;
     }
 
     function isProviderErrorText(text) {
@@ -456,7 +476,7 @@
         );
     }
 
-    async function executeTask(task) {
+    async function executeTask(task, skipNewChat = false) {
         isBusy = true;
         forceSendRequested = false;
         currentTaskId = task.id;
@@ -465,7 +485,7 @@
         try {
             let beforeMessages = getAssistantMessages(task.prompt);
             // Reset to a fresh chat thread if old history exists so 131k context never overflows
-            if (await tryStartNewChatIfNeeded(beforeMessages.length)) {
+            if (await tryStartNewChatIfNeeded(task, beforeMessages.length, skipNewChat)) {
                 beforeMessages = getAssistantMessages(task.prompt);
             }
 
@@ -568,6 +588,17 @@
 
     async function pollLoop() {
         createStatusWidget();
+        try {
+            const rawPending = sessionStorage.getItem('gw_pending_task');
+            if (rawPending) {
+                sessionStorage.removeItem('gw_pending_task');
+                const pendingTask = JSON.parse(rawPending);
+                if (pendingTask && pendingTask.id) {
+                    await sleep(1000);
+                    await executeTask(pendingTask, true);
+                }
+            }
+        } catch (_) {}
         while (true) {
             if (!isPaused && !isBusy) {
                 try {
