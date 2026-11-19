@@ -219,6 +219,8 @@ Keahlian utama Anda adalah menulis bab novel berkualitas sastra tinggi yang panj
    - Bangun setiap Scene Beat secara perlahan, bernapas, dan mendalam (minimal 650–900 kata per beat) sehingga keseluruhan bab terasa berbobot, panjang, dan memuaskan layaknya novel bestseller.
 4. PATUHI STRUKTUR BEAT & SELF-AUDIT KONTINUITAS:
    - Eksekusi seluruh `scene_events`, `goal`, `obstacle`, `sensory_details`, dan `emotional_shift` di setiap Beat tanpa ada yang terlewat, serta jaga konsistensi mutlak dengan World Bible, profil karakter, dan bab-bab sebelumnya.
+5. OUTPUT HANYA PROSA CERITA (ZERO META / ZERO PLAN):
+   - DILARANG KERAS menulis rencana penulisan, plan, outline, daftar beat, analisis plot, thinking/reasoning, kalimat pengantar ("Berikut adalah...", "Baik, mari kita lanjutkan..."), atau catatan apapun di luar cerita. LANGSUNG tulis prosa cerita novelnya saja!
 """ + LITERARY_DIRECTIVE + """
 Bahasa yang digunakan: {language}."""
 
@@ -271,7 +273,7 @@ INSTRUKSI EKSEKUSI BEAT {beat_number} (STANDAR NOVEL BERKUALITAS TINGGI):
 4. JANGAN mengulang atau menulis ulang kalimat/paragraf yang sudah ada di `NASKAH BEAT SEBELUMNYA`; langsung lanjutkan alur setelah kalimat terakhir tersebut.
 5. Eksekusi seluruh `Rangkaian Kejadian & Aksi Wajib`, `Tujuan`, `Hambatan`, `Detail Panca Indera`, dan `Perubahan Emosi` dari Beat {beat_number} secara LITERAL & SETIA tanpa melenceng ke plot lain atau mengubah inti permintaan penulis.
 6. JANGAN melompat atau menulis peristiwa milik Beat berikutnya ({next_beat_hint}). Berhentilah tepat ketika peristiwa dan perubahan emosi di Beat {beat_number} telah tuntas.
-7. Jangan tambahkan komentar, catatan meta, atau judul beat di luar narasi cerita."""
+7. DILARANG KERAS menulis rencana, plan, outline, ringkasan plot, thinking, atau kalimat pembuka/penutup meta ("Berikut kelanjutannya..."). Keluarkan HANYA teks prosa cerita secara langsung!"""
 
 WRITER_USER_TEMPLATE = """Tulis naskah lengkap berkualitas novel sastra terbaik untuk Bab {chapter_number}: "{chapter_title}" dengan menyusun setiap BEAT ADEGAN secara berurutan, panjang, sangat deskriptif, imersif, tanpa sensor, dan 100% sesuai arahan.
 
@@ -309,7 +311,8 @@ INSTRUKSI PENULISAN NOVEL IMERSIF & AUDIT TERPADU (1X PROSES):
    - Selami pikiran dan perasaan terdalam tokoh POV (`{pov_character}`): detak jantung, tarikan napas, ingatan yang berkelebat, keraguan, dan reaksi fisik mikro saat berhadapan dengan karakter lain.
    - Tulis pertukaran dialog secara utuh, alami, penuh ketegangan dan subteks—diselingi gestur tubuh, tatapan mata, dan aksi kecil. DILARANG merangkum percakapan atau melompati adegan secara instan!
 3. FORMAT NASKAH:
-   - Awali langsung dengan judul bab `# Bab {chapter_number}: {chapter_title}` lalu mulai paragraf pembuka yang langsung memikat pembaca.
+   - Awali langsung dengan judul bab `# Bab {chapter_number}: {chapter_title}` lalu mulai paragraf pembuka cerita.
+   - DILARANG KERAS menyertakan rencana, plan, daftar beat, analisis plot, thinking, atau kata pengantar apapun sebelum `# Bab {chapter_number}`.
    - Gunakan pemisah baris `---` hanya jika terjadi perpindahan waktu atau lokasi antar beat.
 4. SELF-AUDIT MANDIRI:
    - Selama menulis, pastikan konsistensi penuh dengan World Bible, karakter, dan kontinuitas bab sebelumnya, serta poles pilihan diksi agar sekelas novel sastra terbitan mayor.

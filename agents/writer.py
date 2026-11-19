@@ -63,9 +63,58 @@ class WriterAgent:
         return "\n\n".join(lines)
 
     @staticmethod
+    def _strip_planning_and_meta(text: str, chap_num: int, is_first_part: bool = True) -> str:
+        """Remove any AI planning, thinking, outline, or meta preambles so only story prose remains."""
+        if not text:
+            return ""
+        cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE).strip()
+
+        # If this is the start of a chapter and '# Bab <chap_num>' appears after a planning preamble,
+        # slice directly from '# Bab <chap_num>' onward.
+        if is_first_part:
+            bab_match = re.search(rf"(?m)^#\s*Bab\s*{chap_num}\b.*$", cleaned, flags=re.IGNORECASE)
+            if bab_match and bab_match.start() > 0:
+                cleaned = cleaned[bab_match.start():].strip()
+
+        # Strip leading meta/planning paragraphs (e.g., 'Rencana:', 'Plan:', 'Berikut adalah...', 'Thinking:')
+        meta_prefixes = (
+            "rencana",
+            "plan",
+            "plot",
+            "outline",
+            "thinking",
+            "thought",
+            "catatan",
+            "ringkasan",
+            "berikut adalah",
+            "berikut kelanjutan",
+            "berikut ini",
+            "baik, berikut",
+            "tentu, berikut",
+            "here is",
+            "here's",
+            "sure, here",
+            "beat ",
+            "**beat ",
+            "### beat ",
+        )
+        paragraphs = re.split(r"\n{2,}", cleaned)
+        while len(paragraphs) > 1:
+            first_para = paragraphs[0].strip()
+            first_low = re.sub(r"^[\*\#\-\>\s]+", "", first_para).lower()
+            is_meta_header = any(first_low.startswith(p) for p in meta_prefixes)
+            is_numbered_plan = bool(re.match(r"^(?:\d+\.|[\-\*])\s+\*?\*?(?:beat|rencana|plan|plot|adegan|tujuan)", first_low))
+            if is_meta_header or is_numbered_plan:
+                paragraphs.pop(0)
+            else:
+                break
+        cleaned = "\n\n".join(paragraphs).strip()
+        return cleaned
+
+    @staticmethod
     def _clean_beat_continuation(beat_text: str, chap_num: int, chap_title: str) -> str:
-        """Remove accidental chapter title or beat header repetition from Beat 2..N."""
-        cleaned = beat_text.strip()
+        """Remove accidental chapter title, planning preambles, or beat header repetition from Beat 2..N."""
+        cleaned = WriterAgent._strip_planning_and_meta(beat_text, chap_num, is_first_part=False)
         # Remove leading markdown chapter title if repeated in subsequent beats
         cleaned = re.sub(
             rf"^#\s*Bab\s*{chap_num}\b.*?\n+",
@@ -213,7 +262,7 @@ class WriterAgent:
                 )
 
                 if idx == 1:
-                    cleaned_part = beat_prose.strip()
+                    cleaned_part = self._strip_planning_and_meta(beat_prose, chap_num, is_first_part=True)
                     if not cleaned_part.startswith("#"):
                         cleaned_part = f"# Bab {chap_num}: {chap_title}\n\n{cleaned_part}"
                 else:
@@ -266,6 +315,7 @@ class WriterAgent:
         )
 
         chapter_prose, audit_data = self._extract_prose_and_audit(raw_output)
+        chapter_prose = self._strip_planning_and_meta(chapter_prose, chap_num, is_first_part=True)
         if not chapter_prose.startswith("#"):
             chapter_prose = f"# Bab {chap_num}: {chap_title}\n\n{chapter_prose}"
 

@@ -944,6 +944,30 @@ def test_beat_by_beat_resume_checkpoint():
         assert proj.get_chapter_beat_progress(1) is None
 
 
+def test_writer_strips_planning_and_meta_preambles():
+    from agents.writer import WriterAgent
+
+    raw_first = (
+        "Rencana Penulisan Bab 1:\n"
+        "- Beat 1: Pembuka di stasiun.\n\n"
+        "Berikut adalah naskah ceritanya:\n\n"
+        "# Bab 1: Kereta Terakhir\n\n"
+        "Hujan turun deras membasahi peron tua itu."
+    )
+    cleaned_first = WriterAgent._strip_planning_and_meta(raw_first, chap_num=1, is_first_part=True)
+    assert cleaned_first.startswith("# Bab 1: Kereta Terakhir")
+    assert "Rencana Penulisan" not in cleaned_first
+    assert "Hujan turun deras" in cleaned_first
+
+    raw_cont = (
+        "Berikut kelanjutan cerita untuk Beat 2:\n\n"
+        "Plan: Raka masuk ke gerbong tiga.\n\n"
+        "Pintu besi berderit pelan ketika Raka melangkah masuk."
+    )
+    cleaned_cont = WriterAgent._clean_beat_continuation(raw_cont, chap_num=1, chap_title="Kereta Terakhir")
+    assert cleaned_cont == "Pintu besi berderit pelan ketika Raka melangkah masuk."
+
+
 if __name__ == "__main__":
     if pytest:
         pytest.main([__file__])

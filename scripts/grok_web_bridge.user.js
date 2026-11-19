@@ -233,6 +233,30 @@
         return false;
     }
 
+    // Extract clean message text excluding collapsed/expanded AI thinking/reasoning/plan blocks and UI buttons
+    function extractCleanElementText(el) {
+        try {
+            const clone = el.cloneNode(true);
+            const noiseSelectors = [
+                'details',
+                'summary',
+                '[class*="thinking" i]',
+                '[class*="reasoning" i]',
+                '[class*="thought" i]',
+                '[data-testid*="thinking" i]',
+                '[data-testid*="reasoning" i]',
+                '[data-testid*="thought" i]',
+                'button',
+            ];
+            for (const nSel of noiseSelectors) {
+                clone.querySelectorAll(nSel).forEach((n) => n.remove());
+            }
+            return (clone.innerText || clone.textContent || '').trim();
+        } catch (_) {
+            return (el.innerText || '').trim();
+        }
+    }
+
     // Collect all visible assistant message blocks in the conversation (filtering out user prompt echoes and outer wrappers)
     function getAssistantMessages(promptText = '') {
         const promptHead = (promptText || '').trim().slice(0, 60);
@@ -245,7 +269,7 @@
         ).filter((el) => !el.querySelector('.prose, [data-message-author-role="assistant"]'));
 
         for (const el of proseEls) {
-            const txt = (el.innerText || '').trim();
+            const txt = extractCleanElementText(el);
             if (txt.length > 0 && !isEcho(txt)) {
                 candidates.push(txt);
             }
@@ -262,7 +286,7 @@
         for (const sel of selectors) {
             const els = Array.from(document.querySelectorAll(sel));
             for (const el of els) {
-                const txt = (el.innerText || '').trim();
+                const txt = extractCleanElementText(el);
                 if (txt.length > 10 && !isEcho(txt)) {
                     candidates.push(txt);
                 }
