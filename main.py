@@ -564,25 +564,23 @@ def main() -> None:
             console.print("[dim]Belum ada proyek aktif yang dipilih.[/dim]")
 
         console.print("\n[bold cyan]=== MENU UTAMA GHOSTWRITER ===[/bold cyan]")
-        console.print("  [bold white]1.[/bold white] 🌟 Buat Proyek Novel Baru (Ide Manual / Upload File Artikel)")
-        console.print("  [bold white]2.[/bold white] 📂 Buka & Kelola Proyek Novel (Buka / Hapus)")
-        console.print("  [bold white]3.[/bold white] ✍️ Tulis / Ulangi Bab Per-Beat (Dengan Catatan User)")
-        console.print("  [bold white]4.[/bold white] 🎨 Buat & Kelola Ilustrasi Bab (3 Ilustrasi Realistis, Konsisten & Tanpa Sensor)")
-        console.print("  [bold white]5.[/bold white] 🔍 Poles / Perpanjang / Revisi Bab")
-        console.print("  [bold white]6.[/bold white] 📖 Baca Naskah Bab di Terminal")
-        console.print("  [bold white]7.[/bold white] 📋 Studio Cerita (Luas → Detail: Premis, World, Per-Karakter, Outline, Bab)")
-        console.print("  [bold white]8.[/bold white] 📦 Export Novel + Ilustrasi (Markdown & Word .docx)")
-        console.print("  [bold white]9.[/bold white] ⚙️ Pengaturan AI (Grok / Gemini / Engine Ilustrasi)")
-        console.print("  [bold white]10.[/bold white] 🚪 Keluar")
+        console.print("  [bold white]1.[/bold white] 🌟 Buat Proyek Novel Baru")
+        console.print("  [bold white]2.[/bold white] 📂 Buka / Hapus Proyek Novel")
+        console.print("  [bold green]3.[/bold green] 📋 [bold]Studio Cerita[/bold] (Premis → World / Karakter → Outline → Bab & Beat)")
+        console.print("  [bold white]4.[/bold white] 🎨 Ilustrasi Bab")
+        console.print("  [bold white]5.[/bold white] 📖 Baca Naskah Bab")
+        console.print("  [bold white]6.[/bold white] 📦 Export Novel (.md / .docx / .html)")
+        console.print("  [bold white]7.[/bold white] ⚙️ Pengaturan AI")
+        console.print("  [bold cyan]0.[/bold cyan] 🚪 Keluar")
 
         try:
             choice = Prompt.ask(
-                "\n[bold green]Pilih opsi (1-10)[/bold green] [dim](Tekan Ctrl+C kapan saja di submenu untuk kembali ke Menu Utama)[/dim]",
-                choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
-                default="1",
+                "\n[bold green]Pilih opsi (0-7)[/bold green] [dim](Ctrl+C di submenu untuk kembali)[/dim]",
+                choices=["0", "1", "2", "3", "4", "5", "6", "7"],
+                default="3" if current_project else "1",
             )
         except KeyboardInterrupt:
-            console.print("\n[dim]Ketik '10' untuk keluar dari aplikasi.[/dim]")
+            console.print("\n[dim]Ketik '0' untuk keluar dari aplikasi.[/dim]")
             continue
 
         try:
@@ -606,12 +604,7 @@ def main() -> None:
                 if not current_project:
                     console.print("[yellow]Buka atau buat proyek novel terlebih dahulu (Opsi 1 atau 2).[/yellow]")
                 else:
-                    try:
-                        write_chapter_flow(current_project, llm)
-                    except KeyboardInterrupt:
-                        raise
-                    except Exception as e:
-                        console.print(f"[bold red]Terjadi kesalahan saat menulis bab:[/bold red] {e}")
+                    show_world_and_characters(current_project, llm)
 
             elif choice == "4":
                 if not current_project:
@@ -628,26 +621,9 @@ def main() -> None:
                 if not current_project:
                     console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
                 else:
-                    try:
-                        audit_chapter_flow(current_project, llm)
-                    except KeyboardInterrupt:
-                        raise
-                    except Exception as e:
-                        console.print(f"[bold red]Terjadi kesalahan saat audit bab:[/bold red] {e}")
-
-            elif choice == "6":
-                if not current_project:
-                    console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
-                else:
                     view_chapter_flow(current_project)
 
-            elif choice == "7":
-                if not current_project:
-                    console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
-                else:
-                    show_world_and_characters(current_project, llm)
-
-            elif choice == "8":
+            elif choice == "6":
                 if not current_project:
                     console.print("[yellow]Buka atau buat proyek novel terlebih dahulu.[/yellow]")
                 else:
@@ -658,10 +634,10 @@ def main() -> None:
                     except Exception as e:
                         console.print(f"[bold red]Terjadi kesalahan saat ekspor:[/bold red] {e}")
 
-            elif choice == "9":
+            elif choice == "7":
                 manage_settings(llm)
 
-            elif choice == "10":
+            elif choice == "0":
                 console.print("\n[bold cyan]Terima kasih telah menggunakan GhostWriter AI! Selamat berkarya.[/bold cyan] 🖋️\n")
                 break
         except KeyboardInterrupt:
