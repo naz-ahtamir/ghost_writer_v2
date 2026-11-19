@@ -12,8 +12,8 @@ class ArchitectAgent:
     def __init__(self, llm: LLMClient):
         self.llm = llm
 
-    def generate_world_bible(self, project: NovelProject) -> Dict[str, Any]:
-        """Generate a complete world bible based on project metadata and existing characters."""
+    def generate_world_bible(self, project: NovelProject, user_note: str = "") -> Dict[str, Any]:
+        """Generate a complete world bible based on project metadata, existing characters, and optional user note."""
         meta = project.metadata
         lang = meta.get("language", "Indonesian")
 
@@ -27,6 +27,9 @@ class ArchitectAgent:
                 backstory = c.get("backstory", "")
                 char_lines.append(f"- {name} ({role}): Tujuan: {goal} | Latar Belakang: {backstory}")
             characters_section = "\nDaftar Karakter Aktif (Wajib dijadikan acuan latar & lore):\n" + "\n".join(char_lines)
+
+        if user_note and user_note.strip():
+            characters_section += f"\n\nCATATAN / REVISI WAJIB DARI PENULIS:\n{user_note.strip()}"
 
         system_prompt = ARCHITECT_SYSTEM.format(language=lang)
         user_prompt = ARCHITECT_USER_TEMPLATE.format(

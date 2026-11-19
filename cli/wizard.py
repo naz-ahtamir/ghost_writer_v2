@@ -153,7 +153,7 @@ def resume_project_foundation(
         f"\n[bold green]🎉 Selamat! Fondasi novel '{title}' telah lengkap dan siap ditulis![/bold green]"
     )
     if Confirm.ask(
-        "[bold yellow]✏️ Ingin mengedit bebas Bab, Karakter, Cerita Utama, atau World Bible sebelum mulai menulis?[/bold yellow]",
+        "[bold yellow]📋 Buka Studio Cerita (Ubah dengan Catatan AI / Lanjut ke Penulisan Bab)?[/bold yellow]",
         default=False,
     ):
         manage_foundation_studio(project, llm)
@@ -161,408 +161,211 @@ def resume_project_foundation(
     return True
 
 
-def edit_story_metadata_interactively(project: NovelProject) -> None:
-    """Allow the user to freely edit the novel's title, genre, tone, premise, and word targets."""
-    meta = project.metadata
-    console.print(Panel(
-        f"[bold cyan]Judul:[/bold cyan] {meta.get('title', '-')}\n"
-        f"[bold cyan]Penulis:[/bold cyan] {meta.get('author', 'Penulis')}\n"
-        f"[bold cyan]Genre:[/bold cyan] {meta.get('genre', '-')}\n"
-        f"[bold cyan]Tone / Nuansa:[/bold cyan] {meta.get('tone', '-')}\n"
-        f"[bold cyan]Target Bab:[/bold cyan] {meta.get('target_chapters', 12)} bab\n"
-        f"[bold cyan]Target Kata / Bab:[/bold cyan] {meta.get('target_words_per_chapter', 3000)} kata\n\n"
-        f"[bold yellow]Premis / Cerita Utama:[/bold yellow]\n{meta.get('premise', '-')}",
-        title="📝 Edit Cerita Utama, Premis & Target Bab",
-        border_style="cyan",
-    ))
-    console.print("[dim]Tekan Enter pada bagian yang tidak ingin diubah:[/dim]")
-    new_title = Prompt.ask("[bold cyan]Judul Novel[/bold cyan]", default=str(meta.get("title", "")))
-    new_author = Prompt.ask("[bold cyan]Nama Penulis[/bold cyan]", default=str(meta.get("author", "Penulis")))
-    new_genre = Prompt.ask("[bold cyan]Genre[/bold cyan]", default=str(meta.get("genre", "")))
-    new_tone = Prompt.ask("[bold cyan]Tone / Nuansa[/bold cyan]", default=str(meta.get("tone", "")))
-    new_premise = Prompt.ask("[bold cyan]Premis / Cerita Utama[/bold cyan]", default=str(meta.get("premise", "")))
-    new_target_ch = IntPrompt.ask(
-        "[bold cyan]Target Jumlah Bab[/bold cyan]",
-        default=int(meta.get("target_chapters", 12)),
-    )
-    new_target_words = IntPrompt.ask(
-        "[bold cyan]Target Kata per Bab (Rekomendasi novel panjang & detail: 2500-4000 kata)[/bold cyan]",
-        default=int(meta.get("target_words_per_chapter", 3000)),
-    )
+def _cascade_from_world_bible(project: NovelProject, llm: LLMClient) -> None:
+    """Offer downstream regeneration (Characters -> Outline) after World Bible changes."""
+    if Confirm.ask("[bold yellow]🔄 Generate ulang Karakter agar sesuai World Bible baru?[/bold yellow]", default=False):
+        char_master = CharacterMasterAgent(llm)
+        with console.status("[bold cyan]👥 Character Master Agent merancang ulang karakter...[/bold cyan]"):
+            char_master.generate_characters(project)
+        console.print("[bold green]✓ Daftar Karakter diperbarui![/bold green]")
 
-    project.save_metadata({
-        "title": new_title.strip() or meta.get("title", "Novel"),
-        "author": new_author.strip() or "Penulis",
-        "genre": new_genre.strip(),
-        "tone": new_tone.strip(),
-        "premise": new_premise.strip(),
-        "target_chapters": max(1, new_target_ch),
-        "target_words_per_chapter": max(500, new_target_words),
-    })
-    console.print("[bold green]✓ Cerita utama, premis, dan target panjang bab berhasil disimpan![/bold green]")
+    if Confirm.ask("[bold yellow]🔄 Generate ulang Outline Bab agar sesuai perubahan terbaru?[/bold yellow]", default=True):
+        outliner = OutlinerAgent(llm)
+        with console.status("[bold cyan]🗺️ Outliner Agent merancang ulang Outline Bab...[/bold cyan]"):
+            outliner.generate_outline(project)
+        cleared = project.clear_chapter_beats_cache(only_undrafted=True)
+        console.print(f"[bold green]✓ Outline Bab diperbarui! ({cleared} cache beat bab baru dibersihkan)[/bold green]")
 
 
-def edit_world_bible_interactively(project: NovelProject) -> None:
-    """Allow the user to freely edit the World Bible without regenerating from scratch."""
-    wb = dict(project.world_bible or {})
-    console.print(Panel(
-        f"[bold cyan]Nama Latar Utama:[/bold cyan] {wb.get('setting_name', '-')}\n"
-        f"[bold cyan]Era / Waktu:[/bold cyan] {wb.get('time_period', '-')}\n"
-        f"[bold cyan]Konsep Inti:[/bold cyan] {wb.get('core_concept', '-')}\n"
-        f"[bold cyan]Atmosfer & Nuansa Sensorik:[/bold cyan] {wb.get('atmosphere', '-')}\n"
-        f"[bold cyan]Aturan Dunia / Sistem:[/bold cyan] {wb.get('rules_and_systems', '-')}\n"
-        f"[bold cyan]Sejarah / Lore Masa Lalu:[/bold cyan] {wb.get('historical_lore', '-')}",
-        title="🏛️ Edit World Bible (Latar & Lore Dunia)",
-        border_style="green",
-    ))
-    console.print("[dim]Tekan Enter untuk mempertahankan isi saat ini, atau ketik isi baru:[/dim]")
-    wb["setting_name"] = Prompt.ask("[bold cyan]Nama Latar Utama[/bold cyan]", default=str(wb.get("setting_name", "")))
-    wb["time_period"] = Prompt.ask("[bold cyan]Era / Periode Waktu[/bold cyan]", default=str(wb.get("time_period", "")))
-    wb["core_concept"] = Prompt.ask("[bold cyan]Konsep Inti Dunia[/bold cyan]", default=str(wb.get("core_concept", "")))
-    wb["atmosphere"] = Prompt.ask("[bold cyan]Atmosfer & Detail Sensorik Dunia[/bold cyan]", default=str(wb.get("atmosphere", "")))
-    wb["rules_and_systems"] = Prompt.ask("[bold cyan]Aturan Dunia / Sistem Sosial / Kekuasaan[/bold cyan]", default=str(wb.get("rules_and_systems", "")))
-    wb["historical_lore"] = Prompt.ask("[bold cyan]Sejarah / Peristiwa Masa Lalu Penting[/bold cyan]", default=str(wb.get("historical_lore", "")))
+def _manage_characters_with_notes(project: NovelProject, llm: LLMClient) -> None:
+    """Regenerate individual characters (or add/remove) using AI notes, then offer Outline cascade."""
+    char_master = CharacterMasterAgent(llm)
+    changed = False
 
-    project.save_world_bible(wb)
-    console.print("[bold green]✓ Perubahan World Bible berhasil disimpan![/bold green]")
-
-
-def edit_characters_interactively(project: NovelProject, llm: Optional[LLMClient] = None) -> None:
-    """Interactive menu to freely edit, add, or delete characters, syncing names & optionally regenerating outline."""
-    characters: List[Dict[str, Any]] = list(project.characters or [])
-    any_changed = False
     while True:
+        characters = list(project.characters or [])
         console.print("\n")
         if characters:
             display_characters_table(characters)
         else:
             console.print("[yellow]Belum ada karakter di proyek ini.[/yellow]")
 
-        console.print("\n[bold cyan]Menu Edit Karakter:[/bold cyan]")
-        console.print("  [bold green]1.[/bold green] ✏️ Ubah Detail Karakter Tertentu (Nama, Peran, Fisik, Sifat, Motivasi, Gaya Bicara)")
-        console.print("  [bold yellow]2.[/bold yellow] ➕ Tambah Karakter Baru Secara Manual")
-        console.print("  [bold red]3.[/bold red] 🗑️ Hapus Karakter Tertentu")
-        console.print("  [bold cyan]4.[/bold cyan] ✅ Selesai & Simpan Perubahan Karakter")
+        console.print("\n[bold cyan]Kelola Karakter dengan Catatan AI:[/bold cyan]")
+        console.print("  • Ketik [bold green]nomor karakter (1..N)[/bold green] untuk generate ulang 1 karakter itu saja dengan catatan")
+        console.print("  • Ketik [bold yellow]+[/bold yellow] untuk tambah 1 karakter baru via AI dengan catatan")
+        console.print("  • Ketik [bold red]-[/bold red] untuk hapus 1 karakter")
+        console.print("  • Ketik [bold magenta]all[/bold magenta] untuk generate ulang semua karakter")
+        console.print("  • Ketik [bold cyan]0[/bold cyan] atau [bold cyan]b[/bold cyan] untuk Kembali")
 
-        sub = Prompt.ask("Pilih aksi (1-4)", choices=["1", "2", "3", "4"], default="4")
-
-        if sub == "1":
-            if not characters:
-                console.print("[yellow]Belum ada karakter untuk diedit.[/yellow]")
-                continue
-            for idx, c in enumerate(characters, 1):
-                console.print(f"  [bold cyan]{idx}.[/bold cyan] {c.get('name', 'Tanpa Nama')} ({c.get('role', '-')})")
-            c_idx = IntPrompt.ask(f"Pilih nomor karakter yang ingin diubah (1-{len(characters)})", default=1)
-            if 1 <= c_idx <= len(characters):
-                target = characters[c_idx - 1]
-                old_name = str(target.get("name", "")).strip()
-                console.print(f"\n[bold yellow]Mengedit Karakter #{c_idx}: {old_name}[/bold yellow] [dim](Tekan Enter jika tidak diubah)[/dim]")
-                new_name = Prompt.ask("Nama Karakter", default=old_name).strip()
-                target["name"] = new_name or old_name
-                target["role"] = Prompt.ask("Peran (Protagonist / Antagonist / Supporting / dsb)", default=str(target.get("role", "")))
-                target["appearance"] = Prompt.ask("Penampilan Fisik & Ciri Khas", default=str(target.get("appearance", "")))
-                target["visual_dna"] = target["appearance"]
-                target["personality"] = Prompt.ask("Sifat & Kepribadian", default=str(target.get("personality", "")))
-                target["flaw"] = Prompt.ask("Kelemahan Batin / Flaw", default=str(target.get("flaw", "")))
-                target["internal_motivation"] = Prompt.ask("Motivasi Batin / Keinginan Terdalam", default=str(target.get("internal_motivation", "")))
-                target["external_goal"] = Prompt.ask("Tujuan Konkret dalam Cerita", default=str(target.get("external_goal", "")))
-                target["speech_mannerism"] = Prompt.ask("Gaya Bicara & Dialog Khas", default=str(target.get("speech_mannerism", "")))
-                target["backstory"] = Prompt.ask("Masa Lalu (Backstory)", default=str(target.get("backstory", "")))
-                project.save_characters(characters)
-                any_changed = True
-                if old_name and target["name"] != old_name:
-                    sync_counts = project.sync_character_rename(old_name, target["name"])
-                    console.print(
-                        f"[bold cyan]🔄 Nama '{old_name}' → '{target['name']}' disinkronkan "
-                        f"(Outline: {sync_counts['outline']}, File Beat: {sync_counts['beats_files']}).[/bold cyan]"
-                    )
-                console.print(f"[bold green]✓ Karakter '{target['name']}' berhasil diperbarui![/bold green]")
-            else:
-                console.print("[red]Nomor karakter tidak valid.[/red]")
-
-        elif sub == "2":
-            console.print("\n[bold green]➕ Tambah Karakter Baru[/bold green]")
-            name = Prompt.ask("Nama Karakter Baru")
-            if not name.strip():
-                continue
-            role = Prompt.ask("Peran (Protagonist / Antagonist / Ally / Mentor / Foil)", default="Supporting")
-            appearance = Prompt.ask("Penampilan Fisik & Ciri Khas", default="")
-            personality = Prompt.ask("Sifat & Kepribadian", default="")
-            flaw = Prompt.ask("Kelemahan Batin / Flaw", default="")
-            internal_motivation = Prompt.ask("Motivasi Batin", default="")
-            external_goal = Prompt.ask("Tujuan Konkret dalam Cerita", default="")
-            speech_mannerism = Prompt.ask("Gaya Bicara Khas", default="Natural dan ekspresif")
-            backstory = Prompt.ask("Masa Lalu Singkat (Backstory)", default="")
-            characters.append({
-                "name": name.strip(),
-                "role": role.strip(),
-                "archetype": role.strip(),
-                "appearance": appearance.strip(),
-                "visual_dna": appearance.strip(),
-                "personality": personality.strip(),
-                "flaw": flaw.strip(),
-                "internal_motivation": internal_motivation.strip(),
-                "external_goal": external_goal.strip(),
-                "speech_mannerism": speech_mannerism.strip(),
-                "backstory": backstory.strip(),
-            })
-            project.save_characters(characters)
-            any_changed = True
-            console.print(f"[bold green]✓ Karakter '{name}' berhasil ditambahkan dan disimpan![/bold green]")
-
-        elif sub == "3":
-            if not characters:
-                continue
-            for idx, c in enumerate(characters, 1):
-                console.print(f"  [bold cyan]{idx}.[/bold cyan] {c.get('name', 'Tanpa Nama')} ({c.get('role', '-')})")
-            del_idx = IntPrompt.ask(f"Pilih nomor karakter yang ingin dihapus (1-{len(characters)})", default=len(characters))
-            if 1 <= del_idx <= len(characters):
-                removed = characters.pop(del_idx - 1)
-                project.save_characters(characters)
-                any_changed = True
-                console.print(f"[bold yellow]✓ Karakter '{removed.get('name')}' telah dihapus.[/bold yellow]")
-
-        elif sub == "4":
-            project.save_characters(characters)
-            console.print("[bold green]✓ Daftar karakter berhasil disimpan![/bold green]")
-            if any_changed and llm:
-                if project.is_world_bible_complete() and Confirm.ask(
-                    "[bold yellow]🏛️ Generate ulang World Bible oleh AI agar latar & lore sesuai dengan karakter baru?[/bold yellow]",
-                    default=False,
-                ):
-                    architect = ArchitectAgent(llm)
-                    with console.status("[bold cyan]🏛️ Architect Agent sedang menyusun ulang World Bible sesuai karakter baru...[/bold cyan]"):
-                        architect.generate_world_bible(project)
-                    console.print("[bold green]✓ World Bible berhasil diperbarui sesuai karakter baru![/bold green]")
-
-                if project.is_outline_complete() and Confirm.ask(
-                    "[bold yellow]🔄 Generate ulang Outline Bab oleh AI agar alur cerita memakai karakter baru?[/bold yellow]",
-                    default=True,
-                ):
-                    outliner = OutlinerAgent(llm)
-                    with console.status("[bold cyan]🗺️ Outliner Agent sedang menyusun ulang Outline Bab sesuai karakter baru...[/bold cyan]"):
-                        outliner.generate_outline(project)
-                    cleared = project.clear_chapter_beats_cache(only_undrafted=True)
-                    console.print(f"[bold green]✓ Outline Bab berhasil diperbarui sesuai karakter baru! ({cleared} cache beat lama dibersihkan)[/bold green]")
+        raw = Prompt.ask("Pilihan Anda", default="0").strip()
+        if raw.lower() in ("0", "b", "batal", "kembali", "back", ""):
             break
 
+        if raw == "+":
+            note = Prompt.ask("[bold yellow]Catatan karakter baru yang ingin dibuat AI (atau 'b' batal)[/bold yellow]").strip()
+            if not note or note.lower() in ("b", "0", "kembali"):
+                continue
+            try:
+                with console.status("[bold cyan]👥 Membuat 1 karakter baru...[/bold cyan]"):
+                    new_c = char_master.add_character_with_note(project, note)
+                changed = True
+                console.print(f"[bold green]✓ Karakter '{new_c.get('name')}' berhasil ditambahkan![/bold green]")
+            except Exception as e:
+                console.print(f"[bold red]❌ Gagal membuat karakter:[/bold red] {e}")
 
-def edit_single_chapter_plan_interactively(project: NovelProject, ch_info: Dict[str, Any]) -> Dict[str, Any]:
-    """Edit a single chapter's plan (title, POV, setting, summary, conflict, turning_point) and persist to outline."""
-    ch_num = ch_info.get("chapter_number", 1)
-    console.print(Panel(
-        f"[bold cyan]Judul Bab {ch_num}:[/bold cyan] {ch_info.get('title', '-')}\n"
-        f"[bold cyan]Karakter POV:[/bold cyan] {ch_info.get('pov_character', '-')}\n"
-        f"[bold cyan]Lokasi / Setting:[/bold cyan] {ch_info.get('setting', '-')}\n"
-        f"[bold cyan]Ringkasan Alur Bab:[/bold cyan] {ch_info.get('summary', '-')}\n"
-        f"[bold cyan]Konflik Utama:[/bold cyan] {ch_info.get('conflict', '-')}\n"
-        f"[bold cyan]Titik Balik Akhir (Ending Bab):[/bold cyan] {ch_info.get('turning_point', '-')}",
-        title=f"✏️ Edit Rencana Bab {ch_num}",
-        border_style="yellow",
-    ))
-    console.print("[dim]Tekan Enter pada bagian yang tidak ingin diubah:[/dim]")
-    ch_info["title"] = Prompt.ask(f"[bold cyan]Judul Bab {ch_num}[/bold cyan]", default=str(ch_info.get("title", f"Bab {ch_num}")))
-    ch_info["pov_character"] = Prompt.ask("[bold cyan]Karakter POV (Sudut Pandang)[/bold cyan]", default=str(ch_info.get("pov_character", "")))
-    ch_info["setting"] = Prompt.ask("[bold cyan]Lokasi / Setting Utama Bab[/bold cyan]", default=str(ch_info.get("setting", "")))
-    ch_info["summary"] = Prompt.ask("[bold cyan]Ringkasan Cerita / Kejadian Bab Ini[/bold cyan]", default=str(ch_info.get("summary", "")))
-    ch_info["conflict"] = Prompt.ask("[bold cyan]Konflik Utama Bab Ini[/bold cyan]", default=str(ch_info.get("conflict", "")))
-    ch_info["turning_point"] = Prompt.ask("[bold cyan]Titik Balik Akhir / Cliffhanger Bab Ini[/bold cyan]", default=str(ch_info.get("turning_point", "")))
+        elif raw == "-":
+            if not characters:
+                continue
+            del_raw = Prompt.ask(f"Nomor karakter yang ingin dihapus (1-{len(characters)}, atau 'b' batal)", default="b").strip()
+            if del_raw.isdigit() and 1 <= int(del_raw) <= len(characters):
+                removed = characters.pop(int(del_raw) - 1)
+                project.save_characters(characters)
+                changed = True
+                console.print(f"[bold yellow]✓ Karakter '{removed.get('name')}' dihapus.[/bold yellow]")
 
-    # Persist into project.outline
-    outline = dict(project.outline or {})
-    chapters = list(outline.get("chapters", []))
-    updated = False
-    for idx, c in enumerate(chapters):
-        if c.get("chapter_number") == ch_num:
-            chapters[idx] = ch_info
-            updated = True
-            break
-    if not updated:
-        chapters.append(ch_info)
-    outline["chapters"] = chapters
-    project.save_outline(outline)
-    console.print(f"[bold green]✓ Rencana Bab {ch_num}: '{ch_info['title']}' berhasil disimpan![/bold green]")
-    return ch_info
+        elif raw.lower() == "all":
+            if Confirm.ask("[bold red]Generate ulang seluruh daftar karakter dari awal?[/bold red]", default=False):
+                try:
+                    with console.status("[bold cyan]👥 Merancang ulang semua karakter...[/bold cyan]"):
+                        char_master.generate_characters(project)
+                    changed = True
+                    console.print("[bold green]✓ Seluruh karakter diperbarui![/bold green]")
+                except Exception as e:
+                    console.print(f"[bold red]❌ Gagal:[/bold red] {e}")
 
-
-def edit_outline_and_chapters_interactively(project: NovelProject) -> None:
-    """Interactive menu to freely edit any chapter's outline, add/remove chapters, or edit overall synopsis."""
-    outline = dict(project.outline or {})
-    chapters: List[Dict[str, Any]] = list(outline.get("chapters", []))
-
-    while True:
-        console.print("\n")
-        if outline.get("overall_synopsis") or outline.get("narrative_arc"):
-            console.print(Panel(
-                f"[bold cyan]Sinopsis Umum:[/bold cyan]\n{outline.get('overall_synopsis', '-')}\n\n"
-                f"[bold cyan]Struktur Tiga Babak (Narrative Arc):[/bold cyan]\n{outline.get('narrative_arc', '-')}",
-                title="🗺️ Alur Cerita Makro",
-                border_style="magenta",
-            ))
-        if chapters:
-            display_chapters_table(chapters, project.list_drafted_chapters())
+        elif raw.isdigit() and 1 <= int(raw) <= len(characters):
+            idx = int(raw) - 1
+            target = characters[idx]
+            console.print(f"\n[bold cyan]Karakter terpilih:[/bold cyan] {target.get('name')} ({target.get('role')})")
+            note = Prompt.ask(
+                "[bold yellow]Catatan perbaikan untuk AI (misal: ubah jadi dingin & licik, ganti nama ke Bima) atau 'b' batal[/bold yellow]"
+            ).strip()
+            if not note or note.lower() in ("b", "0", "kembali"):
+                continue
+            try:
+                with console.status(f"[bold cyan]👥 Memperbarui '{target.get('name')}' dengan catatan Anda...[/bold cyan]"):
+                    updated = char_master.regenerate_single_character(project, idx, user_note=note)
+                changed = True
+                console.print(f"[bold green]✓ Karakter diperbarui menjadi '{updated.get('name')}' ({updated.get('role')})![/bold green]")
+            except Exception as e:
+                console.print(f"[bold red]❌ Gagal memperbarui karakter:[/bold red] {e}")
         else:
-            console.print("[yellow]Belum ada daftar bab di dalam Outline.[/yellow]")
+            console.print("[yellow]Pilihan tidak dikenali.[/yellow]")
 
-        console.print("\n[bold cyan]Menu Edit Bab & Outline Alur:[/bold cyan]")
-        console.print("  [bold green]1.[/bold green] ✏️ Edit Rencana Bab Tertentu (Judul, POV, Lokasi, Cerita, Konflik, Ending Bab)")
-        console.print("  [bold yellow]2.[/bold yellow] 📖 Edit Sinopsis Umum & Struktur Tiga Babak (Narrative Arc)")
-        console.print("  [bold yellow]3.[/bold yellow] ➕ Tambah Bab Baru ke Outline")
-        console.print("  [bold red]4.[/bold red] 🗑️ Hapus Bab Tertentu dari Outline")
-        console.print("  [bold cyan]5.[/bold cyan] ✅ Selesai & Simpan Outline")
-
-        sub = Prompt.ask("Pilih aksi (1-5)", choices=["1", "2", "3", "4", "5"], default="5")
-
-        if sub == "1":
-            if not chapters:
-                console.print("[yellow]Belum ada bab untuk diedit. Pilih 3 untuk menambah bab.[/yellow]")
-                continue
-            ch_num = IntPrompt.ask(f"Masukkan Nomor Bab yang ingin diedit (1-{len(chapters)})", default=1)
-            target_ch = next((c for c in chapters if c.get("chapter_number") == ch_num), None)
-            if not target_ch and 1 <= ch_num <= len(chapters):
-                target_ch = chapters[ch_num - 1]
-            if target_ch:
-                edit_single_chapter_plan_interactively(project, target_ch)
-                outline = dict(project.outline or {})
-                chapters = list(outline.get("chapters", []))
-            else:
-                console.print("[red]Nomor bab tidak ditemukan.[/red]")
-
-        elif sub == "2":
-            outline["overall_synopsis"] = Prompt.ask(
-                "[bold cyan]Sinopsis Umum Keseluruhan Novel[/bold cyan]",
-                default=str(outline.get("overall_synopsis", "")),
-            )
-            outline["narrative_arc"] = Prompt.ask(
-                "[bold cyan]Struktur Tiga Babak (Narrative Arc)[/bold cyan]",
-                default=str(outline.get("narrative_arc", "")),
-            )
-            outline["chapters"] = chapters
-            project.save_outline(outline)
-            console.print("[bold green]✓ Sinopsis umum & struktur babak berhasil disimpan![/bold green]")
-
-        elif sub == "3":
-            new_num = len(chapters) + 1
-            console.print(f"\n[bold green]➕ Menambahkan Bab #{new_num}[/bold green]")
-            default_pov = project.characters[0].get("name", "Protagonis") if project.characters else "Protagonis"
-            default_set = project.world_bible.get("setting_name", "Lokasi Utama")
-            new_ch = {
-                "chapter_number": new_num,
-                "title": Prompt.ask("Judul Bab Baru", default=f"Bab {new_num}"),
-                "pov_character": Prompt.ask("Karakter POV", default=default_pov),
-                "setting": Prompt.ask("Lokasi / Setting", default=default_set),
-                "summary": Prompt.ask("Ringkasan Alur / Kejadian Bab Ini", default=""),
-                "conflict": Prompt.ask("Konflik Utama Bab Ini", default=""),
-                "turning_point": Prompt.ask("Titik Balik Akhir / Cliffhanger Bab Ini", default=""),
-                "status": "planned",
-            }
-            chapters.append(new_ch)
-            outline["chapters"] = chapters
-            project.save_outline(outline)
-            project.save_metadata({"target_chapters": len(chapters)})
-            console.print(f"[bold green]✓ Bab {new_num}: '{new_ch['title']}' berhasil ditambahkan![/bold green]")
-
-        elif sub == "4":
-            if len(chapters) <= 1:
-                console.print("[yellow]Minimal harus ada 1 bab dalam outline.[/yellow]")
-                continue
-            del_num = IntPrompt.ask(f"Masukkan Nomor Bab yang ingin dihapus (1-{len(chapters)})", default=len(chapters))
-            if 1 <= del_num <= len(chapters):
-                removed = chapters.pop(del_num - 1)
-                for idx, c in enumerate(chapters, 1):
-                    c["chapter_number"] = idx
-                outline["chapters"] = chapters
-                project.save_outline(outline)
-                project.save_metadata({"target_chapters": len(chapters)})
-                console.print(f"[bold yellow]✓ Bab '{removed.get('title')}' dihapus dan urutan nomor bab telah dirapikan.[/bold yellow]")
-
-        elif sub == "5":
-            outline["chapters"] = chapters
-            project.save_outline(outline)
-            console.print("[bold green]✓ Outline bab berhasil disimpan![/bold green]")
-            break
-
-
-def regenerate_foundation_part_interactively(project: NovelProject, llm: LLMClient) -> None:
-    """Allow selective AI generation of ONLY a missing/chosen component without wiping everything else."""
-    console.print("\n[bold cyan]🤖 Generate Bagian Tertentu dengan AI (Tanpa Mereset Semuanya):[/bold cyan]")
-    console.print("  [bold green]1.[/bold green] ⚡ Lengkapi Hanya Bagian yang Masih Kosong")
-    console.print("  [bold yellow]2.[/bold yellow] 🏛️ Generate Ulang HANYA World Bible (Karakter & Bab Tetap Aman)")
-    console.print("  [bold yellow]3.[/bold yellow] 👥 Generate Ulang HANYA Daftar Karakter (World Bible & Bab Tetap Aman)")
-    console.print("  [bold yellow]4.[/bold yellow] 🗺️ Generate Ulang HANYA Outline Bab (World Bible & Karakter Tetap Aman)")
-    console.print("  [bold red]5.[/bold red] 🔄 Generate Ulang Seluruh Fondasi dari Awal (Reset Semua)")
-    console.print("  [bold cyan]6.[/bold cyan] 🚪 Batal")
-
-    choice = Prompt.ask("Pilih opsi (1-6)", choices=["1", "2", "3", "4", "5", "6"], default="1")
-    if choice == "6":
-        return
-    elif choice == "1":
-        missing = project.get_missing_foundation_components()
-        if not missing:
-            console.print("[bold green]✓ Seluruh komponen fondasi sudah terisi lengkap! Tidak ada yang perlu di-generate ulang.[/bold green]")
-            return
-        resume_project_foundation(project, llm, force_all=False)
-    elif choice == "2":
-        architect = ArchitectAgent(llm)
-        with console.status("[bold cyan]🏛️ Architect Agent sedang merancang ulang World Bible...[/bold cyan]"):
-            architect.generate_world_bible(project)
-        console.print("[bold green]✓ World Bible berhasil diperbarui tanpa menghapus Karakter & Bab![/bold green]")
-    elif choice == "3":
-        char_master = CharacterMasterAgent(llm)
-        with console.status("[bold cyan]👥 Character Master Agent sedang merancang ulang Karakter...[/bold cyan]"):
-            char_master.generate_characters(project)
-        console.print("[bold green]✓ Daftar Karakter berhasil diperbarui tanpa menghapus World Bible & Bab![/bold green]")
-    elif choice == "4":
-        outliner = OutlinerAgent(llm)
-        with console.status("[bold cyan]🗺️ Outliner Agent sedang merancang ulang Outline Bab...[/bold cyan]"):
-            outliner.generate_outline(project)
-        console.print("[bold green]✓ Outline Bab berhasil diperbarui tanpa menghapus World Bible & Karakter![/bold green]")
-    elif choice == "5":
-        if Confirm.ask("[bold red]Yakin ingin mereset seluruh World Bible, Karakter, dan Outline dari awal?[/bold red]", default=False):
-            resume_project_foundation(project, llm, force_all=True)
+    if changed and project.is_outline_complete():
+        if Confirm.ask(
+            "[bold yellow]🔄 Generate ulang Outline Bab agar alur cerita sesuai karakter terbaru?[/bold yellow]",
+            default=True,
+        ):
+            outliner = OutlinerAgent(llm)
+            with console.status("[bold cyan]🗺️ Outliner Agent menyusun ulang Outline Bab...[/bold cyan]"):
+                outliner.generate_outline(project)
+            cleared = project.clear_chapter_beats_cache(only_undrafted=True)
+            console.print(f"[bold green]✓ Outline Bab diperbarui! ({cleared} cache beat lama dibersihkan)[/bold green]")
 
 
 def manage_foundation_studio(project: NovelProject, llm: LLMClient) -> None:
-    """Interactive studio to freely view and edit story premise, World Bible, characters, and chapters."""
+    """Unified hierarchical studio ordered from broadest scope (Premise) to finest detail (Chapter Beats)."""
     while True:
         meta = project.metadata
         wb = project.world_bible
         console.print("\n")
         print_header(
-            f"🛠️ Studio Edit Cerita, Karakter & Bab: {meta.get('title', 'Novel')}",
-            "Bebas ubah cerita utama, karakter, aturan dunia, dan rencana tiap bab kapan saja tanpa generate ulang dari awal",
+            f"📋 Studio Cerita (Luas → Detail): {meta.get('title', 'Novel')}",
+            "Cukup beri catatan perbaikan ke AI — perubahan di atas dapat otomatis memperbarui bagian di bawahnya",
         )
         console.print(Panel(
-            f"[bold cyan]Judul & Genre:[/bold cyan] {meta.get('title', '-')} ({meta.get('genre', '-')} | {meta.get('tone', '-')})\n"
-            f"[bold cyan]Target Ukuran:[/bold cyan] {meta.get('target_chapters', 12)} Bab × ~{meta.get('target_words_per_chapter', 3000)} kata/bab\n"
-            f"[bold cyan]Premis Cerita:[/bold cyan] {meta.get('premise', '-')}\n\n"
-            f"[bold green]🏛️ Latar Dunia:[/bold green] {wb.get('setting_name', 'Belum diatur')} — {wb.get('core_concept', '-')}\n"
-            f"[bold yellow]👥 Jumlah Karakter:[/bold yellow] {len(project.characters)} tokoh  |  "
-            f"[bold magenta]🗺️ Jumlah Bab di Outline:[/bold magenta] {len(project.outline.get('chapters', []))} bab",
-            title="📋 Ringkasan Proyek Saat Ini",
+            f"[bold cyan]1. Premis:[/bold cyan] {meta.get('premise', '-')}\n"
+            f"[bold green]2. World Bible:[/bold green] {wb.get('setting_name', 'Belum ada')} — {wb.get('core_concept', '-')}\n"
+            f"[bold yellow]3. Karakter:[/bold yellow] {len(project.characters)} tokoh\n"
+            f"[bold magenta]4. Outline Bab:[/bold magenta] {len(project.outline.get('chapters', []))} bab ({len(project.list_drafted_chapters())} bab sudah ditulis)",
+            title="📌 Posisi Fondasi Saat Ini",
             border_style="cyan",
         ))
 
-        console.print("[bold cyan]Pilih Bagian yang Ingin Anda Edit / Kelola:[/bold cyan]")
-        console.print("  [bold green]1.[/bold green] 🗺️ [bold]Edit Bab-Bab & Outline Alur[/bold] (Ubah Judul Bab, POV, Cerita Bab, Konflik, Tambah/Hapus Bab)")
-        console.print("  [bold green]2.[/bold green] 👥 [bold]Edit / Tambah / Hapus Karakter[/bold] (Ubah Nama, Peran, Fisik, Sifat, Motivasi, Gaya Bicara)")
-        console.print("  [bold green]3.[/bold green] 📝 [bold]Edit Cerita Utama, Premis, Genre & Target Panjang Kata per Bab[/bold]")
-        console.print("  [bold green]4.[/bold green] 🏛️ [bold]Edit World Bible[/bold] (Ubah Nama Lokasi, Atmosfer, Aturan Dunia, Sejarah)")
-        console.print("  [bold yellow]5.[/bold yellow] 👁️ Lihat Tabel Lengkap Karakter & Daftar Seluruh Bab")
-        console.print("  [bold magenta]6.[/bold magenta] 🤖 Generate dengan AI (Hanya Bagian Tertentu / Tanpa Reset Semua)")
-        console.print("  [bold cyan]7.[/bold cyan] ✅ Selesai & Kembali")
+        console.print("[bold cyan]Pilih Level yang Ingin Diubah / Dikerjakan (Urut Luas → Detail):[/bold cyan]")
+        console.print("  [bold green]1.[/bold green] 🌍 [bold]Premis & Konsep Utama[/bold] (Ubah premis/genre/tone → tawarkan update World, Karakter, Outline)")
+        console.print("  [bold green]2.[/bold green] 🏛️ [bold]World Bible[/bold] (Generate ulang dengan catatan AI → tawarkan update Karakter & Outline)")
+        console.print("  [bold green]3.[/bold green] 👥 [bold]Karakter (Per Karakter)[/bold] (Generate ulang 1 karakter dengan catatan AI → tawarkan update Outline)")
+        console.print("  [bold green]4.[/bold green] 🗺️ [bold]Outline Bab[/bold] (Generate ulang Outline dengan catatan AI)")
+        console.print("  [bold magenta]5.[/bold magenta] ✍️ [bold]Isi Bab & Beat (Per Beat)[/bold] (Tulis / generate ulang 1 Beat tertentu dengan catatan AI)")
+        console.print("  [bold yellow]6.[/bold yellow] 👁️ Lihat Detail World Bible, Tabel Karakter & Daftar Bab")
+        console.print("  [bold cyan]0.[/bold cyan] 🔙 Kembali ke Menu Utama")
 
-        action = Prompt.ask("\n[bold green]Pilih menu (1-7)[/bold green]", choices=["1", "2", "3", "4", "5", "6", "7"], default="7")
+        action = Prompt.ask("\n[bold green]Pilih menu (0-6)[/bold green]", choices=["0", "1", "2", "3", "4", "5", "6"], default="0")
 
-        if action == "1":
-            edit_outline_and_chapters_interactively(project)
+        if action == "0":
+            break
+
+        elif action == "1":
+            console.print(Panel(
+                f"[bold]Judul:[/bold] {meta.get('title', '-')}\n"
+                f"[bold]Genre & Tone:[/bold] {meta.get('genre', '-')} | {meta.get('tone', '-')}\n"
+                f"[bold]Premis:[/bold] {meta.get('premise', '-')}",
+                title="🌍 Premis & Konsep Saat Ini",
+                border_style="cyan",
+            ))
+            new_premise = Prompt.ask(
+                "[bold yellow]Masukkan Premis baru / catatan perubahan (atau 'b' untuk Kembali)[/bold yellow]",
+                default=str(meta.get("premise", "")),
+            ).strip()
+            if new_premise.lower() in ("b", "0", "kembali"):
+                continue
+            new_genre = Prompt.ask("[bold cyan]Genre[/bold cyan]", default=str(meta.get("genre", "")))
+            new_tone = Prompt.ask("[bold cyan]Tone[/bold cyan]", default=str(meta.get("tone", "")))
+            project.save_metadata({
+                "premise": new_premise,
+                "genre": new_genre.strip(),
+                "tone": new_tone.strip(),
+            })
+            console.print("[bold green]✓ Premis & konsep diperbarui![/bold green]")
+            if Confirm.ask("[bold yellow]🔄 Generate ulang World Bible agar sesuai Premis baru?[/bold yellow]", default=True):
+                architect = ArchitectAgent(llm)
+                with console.status("[bold cyan]🏛️ Architect Agent merancang ulang World Bible...[/bold cyan]"):
+                    architect.generate_world_bible(project)
+                console.print("[bold green]✓ World Bible diperbarui![/bold green]")
+            _cascade_from_world_bible(project, llm)
+
         elif action == "2":
-            edit_characters_interactively(project, llm=llm)
+            note = Prompt.ask(
+                "[bold yellow]Catatan perbaikan World Bible untuk AI (atau Enter untuk generate ulang, 'b' Kembali)[/bold yellow]",
+                default="",
+            ).strip()
+            if note.lower() in ("b", "0", "kembali"):
+                continue
+            architect = ArchitectAgent(llm)
+            try:
+                with console.status("[bold cyan]🏛️ Architect Agent merancang ulang World Bible...[/bold cyan]"):
+                    architect.generate_world_bible(project, user_note=note)
+                console.print("[bold green]✓ World Bible berhasil diperbarui sesuai catatan Anda![/bold green]")
+                _cascade_from_world_bible(project, llm)
+            except Exception as e:
+                console.print(f"[bold red]❌ Gagal memperbarui World Bible:[/bold red] {e}")
+
         elif action == "3":
-            edit_story_metadata_interactively(project)
+            _manage_characters_with_notes(project, llm)
+
         elif action == "4":
-            edit_world_bible_interactively(project)
+            note = Prompt.ask(
+                "[bold yellow]Catatan perbaikan Outline Bab untuk AI (atau Enter untuk generate ulang, 'b' Kembali)[/bold yellow]",
+                default="",
+            ).strip()
+            if note.lower() in ("b", "0", "kembali"):
+                continue
+            outliner = OutlinerAgent(llm)
+            try:
+                with console.status("[bold cyan]🗺️ Outliner Agent menyusun ulang Outline Bab...[/bold cyan]"):
+                    outliner.generate_outline(project, user_note=note)
+                cleared = project.clear_chapter_beats_cache(only_undrafted=True)
+                console.print(f"[bold green]✓ Outline Bab diperbarui! ({cleared} cache beat lama dibersihkan)[/bold green]")
+            except Exception as e:
+                console.print(f"[bold red]❌ Gagal memperbarui Outline:[/bold red] {e}")
+
         elif action == "5":
+            from cli.chapter_flow import write_chapter_flow
+            write_chapter_flow(project, llm)
+
+        elif action == "6":
             if wb:
                 console.print(Panel(
                     f"[bold]Nama Setting:[/bold] {wb.get('setting_name', '-')}\n"
@@ -577,10 +380,6 @@ def manage_foundation_studio(project: NovelProject, llm: LLMClient) -> None:
                 display_characters_table(project.characters)
             if project.outline.get("chapters"):
                 display_chapters_table(project.outline.get("chapters", []), project.list_drafted_chapters())
-        elif action == "6":
-            regenerate_foundation_part_interactively(project, llm)
-        elif action == "7":
-            break
 
 
 def _prompt_article_input() -> Optional[Tuple[str, str]]:

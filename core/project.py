@@ -196,6 +196,29 @@ class NovelProject:
         """Path to incremental beat-by-beat drafting checkpoint file."""
         return self.chapters_dir / f"chapter_{chapter_num:02d}_progress.json"
 
+    def get_chapter_parts_file(self, chapter_num: int) -> Path:
+        """Path to completed per-beat prose parts json file for selective beat regeneration."""
+        return self.chapters_dir / f"chapter_{chapter_num:02d}_parts.json"
+
+    def save_chapter_parts(self, chapter_num: int, parts: List[str]) -> None:
+        """Persist per-beat prose segments so individual beats can be regenerated without rewriting the whole chapter."""
+        parts_file = self.get_chapter_parts_file(chapter_num)
+        with open(parts_file, "w", encoding="utf-8") as f:
+            json.dump(parts, f, indent=2, ensure_ascii=False)
+
+    def get_chapter_parts(self, chapter_num: int) -> Optional[List[str]]:
+        """Retrieve per-beat prose segments if available."""
+        parts_file = self.get_chapter_parts_file(chapter_num)
+        if parts_file.exists():
+            try:
+                with open(parts_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, list) and data:
+                    return [str(x) for x in data]
+            except Exception:
+                pass
+        return None
+
     def save_chapter_beat_progress(
         self,
         chapter_num: int,

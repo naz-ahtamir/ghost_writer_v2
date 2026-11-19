@@ -13,8 +13,8 @@ class OutlinerAgent:
     def __init__(self, llm: LLMClient):
         self.llm = llm
 
-    def generate_outline(self, project: NovelProject) -> Dict[str, Any]:
-        """Generate full outline and chapter breakdown."""
+    def generate_outline(self, project: NovelProject, user_note: str = "") -> Dict[str, Any]:
+        """Generate full outline and chapter breakdown, optionally guided by user_note."""
         meta = project.metadata
         lang = meta.get("language", "Indonesian")
 
@@ -35,13 +35,16 @@ class OutlinerAgent:
         )
 
         target_chapters = int(meta.get("target_chapters", 12))
+        premise_text = meta.get("premise", "")
+        if user_note and user_note.strip():
+            premise_text = f"{premise_text}\n\nCATATAN / ARAHAN PENULIS UNTUK OUTLINE:\n{user_note.strip()}".strip()
 
         system_prompt = OUTLINER_SYSTEM.format(language=lang)
         user_prompt = OUTLINER_USER_TEMPLATE.format(
             title=meta.get("title", ""),
             genre=meta.get("genre", ""),
             tone=meta.get("tone", ""),
-            premise=meta.get("premise", ""),
+            premise=premise_text,
             target_chapters=target_chapters,
             characters_summary=chars_summary,
             setting_summary=world_summary,

@@ -968,6 +968,69 @@ def test_writer_strips_planning_and_meta_preambles():
     assert cleaned_cont == "Pintu besi berderit pelan ketika Raka melangkah masuk."
 
 
+def test_per_character_and_per_beat_selective_regeneration():
+    from agents.character_master import CharacterMasterAgent
+    from agents.writer import WriterAgent
+
+    class DummySelectiveLLM:
+        def generate_json(self, prompt: str, system_instruction: str = None, temperature: float = 0.7):
+            return {
+                "name": "Bima",
+                "role": "Protagonist",
+                "archetype": "Anti-hero",
+                "appearance": "Tinggi, bekas luka di pipi",
+                "personality": "Dingin dan licik",
+                "flaw": "Tidak percaya siapa pun",
+                "internal_motivation": "Balas dendam",
+                "external_goal": "Menjatuhkan sindikat",
+                "speech_mannerism": "Singkat dan tajam",
+                "backstory": "Mantan agen yang dikhianati",
+            }
+
+        def generate(self, prompt: str, system_instruction: str = None, temperature: float = 0.7) -> str:
+            return "Bima langsung menghunus pisau lipatnya tanpa suara."
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        proj = NovelProject(Path(tmp_dir) / "selective_novel")
+        proj.save_metadata({"title": "Uji Selektif", "target_words_per_chapter": 1500})
+        proj.save_world_bible({"setting_name": "Pelabuhan", "atmosphere": "Gelap"})
+        proj.save_characters([
+            {"name": "Arga", "role": "Protagonist", "personality": "Ramah"},
+            {"name": "Sinta", "role": "Ally", "personality": "Setia"},
+        ])
+        proj.save_outline({
+            "chapters": [{"chapter_number": 1, "title": "Malam Pertama", "pov_character": "Arga", "summary": "Arga tiba."}]
+        })
+
+        dummy = DummySelectiveLLM()
+        cm = CharacterMasterAgent(dummy)
+        updated = cm.regenerate_single_character(proj, char_index=0, user_note="Ubah Arga jadi Bima yang dingin dan licik")
+        assert updated["name"] == "Bima"
+        assert proj.characters[0]["name"] == "Bima"
+        # Ally character Sinta must remain untouched
+        assert proj.characters[1]["name"] == "Sinta"
+        # Rename synced to outline
+        assert proj.outline["chapters"][0]["pov_character"] == "Bima"
+
+        # Now test regenerating ONLY Beat 2 of 2
+        beats = [
+            {"beat_number": 1, "beat_name": "Beat 1", "scene_events": "Pembuka"},
+            {"beat_number": 2, "beat_name": "Beat 2", "scene_events": "Konfrontasi"},
+        ]
+        proj.save_chapter_parts(1, ["# Bab 1: Malam Pertama\n\nParagraf awal Beat 1.", "Paragraf lama Beat 2."])
+        writer = WriterAgent(dummy)
+        new_prose = writer.regenerate_single_beat(
+            project=proj,
+            chapter_info=proj.outline["chapters"][0],
+            beats=beats,
+            beat_index=2,
+            user_note="Buat Bima langsung menghunus pisau",
+        )
+        assert "Paragraf awal Beat 1." in new_prose
+        assert "Bima langsung menghunus pisau lipatnya" in new_prose
+        assert "Paragraf lama Beat 2." not in new_prose
+
+
 if __name__ == "__main__":
     if pytest:
         pytest.main([__file__])

@@ -97,98 +97,8 @@ def display_beats_list(beats: List[Dict[str, Any]]) -> None:
             console.print(f"    [dim yellow]• Perubahan Emosi: {emotion}[/dim yellow]")
 
 
-def edit_beats_interactively(
-    project: NovelProject,
-    ch_num: int,
-    beats: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """Allow the user to freely edit, add, or delete scene beats."""
-    while True:
-        display_beats_list(beats)
-        console.print("\n[bold cyan]Menu Kustomisasi Beat (Mode Bebas):[/bold cyan]")
-        console.print("  [white]1.[/white] Ubah isi Beat tertentu")
-        console.print("  [white]2.[/white] Tambah Beat baru")
-        console.print("  [white]3.[/white] Hapus Beat tertentu")
-        console.print("  [white]4.[/white] Selesai & Simpan Beat")
-
-        sub = Prompt.ask("Pilih aksi", choices=["1", "2", "3", "4"], default="4")
-        if sub == "4":
-            break
-        elif sub == "1" and beats:
-            b_idx = IntPrompt.ask(f"Pilih nomor Beat yang ingin diubah (1-{len(beats)})", default=1)
-            if 1 <= b_idx <= len(beats):
-                target = beats[b_idx - 1]
-                target["beat_name"] = Prompt.ask("Nama/Judul Beat", default=target.get("beat_name", f"Beat {b_idx}"))
-                target["scene_events"] = Prompt.ask(
-                    "Rangkaian Kejadian & Aksi Wajib (bebas tanpa sensor)",
-                    default=target.get("scene_events", ""),
-                )
-                target["goal"] = Prompt.ask("Tujuan Karakter di Beat ini", default=target.get("goal", ""))
-                target["obstacle"] = Prompt.ask("Hambatan / Konflik", default=target.get("obstacle", ""))
-                target["sensory_details"] = Prompt.ask("Detail Panca Indera & Fisik", default=target.get("sensory_details", ""))
-                target["emotional_shift"] = Prompt.ask("Perubahan Emosi", default=target.get("emotional_shift", ""))
-                console.print(f"[bold green]✓ Beat {b_idx} berhasil diperbarui![/bold green]")
-        elif sub == "2":
-            new_num = len(beats) + 1
-            name = Prompt.ask("Nama/Judul Beat Baru", default=f"Adegan {new_num}")
-            events = Prompt.ask("Rangkaian Kejadian & Aksi Wajib di Beat ini")
-            goal = Prompt.ask("Tujuan Karakter", default=events)
-            obstacle = Prompt.ask("Hambatan / Konflik", default="Ketegangan dan rintangan adegan")
-            sensory = Prompt.ask("Detail Panca Indera & Fisik", default="Suasana ruang, gestur fisik, dialog, dan kontak nyata")
-            emotion = Prompt.ask("Perubahan Emosi", default="Eskalasi emosi karakter")
-            beats.append({
-                "beat_number": new_num,
-                "beat_name": name,
-                "scene_events": events,
-                "goal": goal,
-                "obstacle": obstacle,
-                "sensory_details": sensory,
-                "emotional_shift": emotion,
-            })
-            console.print(f"[bold green]✓ Beat {new_num} berhasil ditambahkan![/bold green]")
-        elif sub == "3" and len(beats) > 1:
-            b_idx = IntPrompt.ask(f"Pilih nomor Beat yang ingin dihapus (1-{len(beats)})", default=len(beats))
-            if 1 <= b_idx <= len(beats):
-                removed = beats.pop(b_idx - 1)
-                for i, item in enumerate(beats, 1):
-                    item["beat_number"] = i
-                console.print(f"[yellow]Beat '{removed.get('beat_name')}' dihapus.[/yellow]")
-
-    beats = ScenePlannerAgent.normalize_beats(beats)
-    project.save_chapter_beats(ch_num, beats)
-    return beats
-
-
-def create_manual_beats_flow(project: NovelProject, ch_num: int) -> List[Dict[str, Any]]:
-    """Allow the user to write their own beats from scratch with 100% freedom."""
-    console.print("\n[bold yellow]✍️ Mode Input Beat Manual (100% Bebas Tanpa Sensor)[/bold yellow]")
-    console.print("[dim]Masukkan urutan adegan (beat) yang Anda inginkan untuk bab ini.[/dim]")
-    count = IntPrompt.ask("Berapa jumlah Beat yang ingin Anda buat?", default=3)
-    count = max(1, min(12, count))
-    manual_beats: List[Dict[str, Any]] = []
-    for i in range(1, count + 1):
-        console.print(f"\n[bold cyan]--- Beat {i}/{count} ---[/bold cyan]")
-        name = Prompt.ask(f"Judul Beat {i}", default=f"Beat {i}")
-        events = Prompt.ask(f"Apa saja kejadian/aksi yang WAJIB ditulis di Beat {i}?")
-        goal = Prompt.ask(f"Tujuan karakter di Beat {i} (Enter untuk samakan)", default=events)
-        obstacle = Prompt.ask(f"Konflik/Hambatan di Beat {i}", default="Tensi dan rintangan adegan")
-        sensory = Prompt.ask(f"Fokus Panca Indera / Fisik di Beat {i}", default="Detail ekspresi, gestur, suara, dan sensasi fisik")
-        emotion = Prompt.ask(f"Perubahan Emosi di akhir Beat {i}", default="Emosi semakin intens")
-        manual_beats.append({
-            "beat_number": i,
-            "beat_name": name,
-            "scene_events": events,
-            "goal": goal,
-            "obstacle": obstacle,
-            "sensory_details": sensory,
-            "emotional_shift": emotion,
-        })
-    project.save_chapter_beats(ch_num, manual_beats)
-    return manual_beats
-
-
 def write_chapter_flow(project: NovelProject, llm: LLMClient) -> None:
-    """Execute the full drafting flow for a chapter with complete beat control."""
+    """Simplified per-beat chapter drafting & selective beat regeneration with user notes."""
     ch_info = select_chapter_info(project, llm)
     if not ch_info:
         return
@@ -197,7 +107,7 @@ def write_chapter_flow(project: NovelProject, llm: LLMClient) -> None:
     ch_title = ch_info.get("title", f"Bab {ch_num}")
 
     print_header(
-        f"✍️ Menulis Bab {ch_num}: {ch_title} (Uncensored Mode)",
+        f"✍️ Bab {ch_num}: {ch_title}",
         f"POV: {ch_info.get('pov_character')} | Lokasi: {ch_info.get('setting')}",
     )
 
@@ -216,11 +126,12 @@ def write_chapter_flow(project: NovelProject, llm: LLMClient) -> None:
         total_b = int(beat_progress.get("total_beats", 0))
         console.print(
             f"\n[bold yellow]⏩ Ditemukan progres penulisan Bab {ch_num} yang sempat terhenti "
-            f"({done_b}/{total_b} Beat sudah tersimpan).[/bold yellow]"
+            f"({done_b}/{total_b} Beat tersimpan).[/bold yellow]"
         )
-        if Confirm.ask(f"[bold green]Lanjutkan langsung dari Beat {done_b + 1}/{total_b} (tanpa mengulang dari Beat 1)?[/bold green]", default=True):
+        if Confirm.ask(f"[bold green]Lanjutkan langsung dari Beat {done_b + 1}/{total_b}?[/bold green]", default=True):
             saved_beats = project.get_chapter_beats(ch_num) or []
             beats = ScenePlannerAgent.normalize_beats(saved_beats, chapter_info=ch_info)
+            note_resume = Prompt.ask("[bold yellow]Catatan tambahan untuk sisa Beat (Enter jika tidak ada)[/bold yellow]", default="").strip()
             writer = WriterAgent(llm)
             while True:
                 status_ctx = console.status(f"[bold magenta]⏩ Melanjutkan Beat {done_b + 1}/{len(beats)}...[/bold magenta]")
@@ -235,67 +146,21 @@ def write_chapter_flow(project: NovelProject, llm: LLMClient) -> None:
                         project=project,
                         chapter_info=ch_info,
                         beats=beats,
+                        custom_instructions=note_resume,
                         beat_by_beat=True,
                         progress_callback=on_resume_progress,
                     )
                     status_ctx.stop()
                     word_count = len(prose.split())
                     console.print(f"\n[bold green]🎉 Bab {ch_num}: {ch_title} selesai dilanjutkan hingga tuntas! ({word_count} kata)[/bold green]\n")
-                    if Confirm.ask("[bold cyan]Tampilkan naskah bab di layar terminal sekarang?[/bold cyan]", default=True):
+                    if Confirm.ask("[bold cyan]Tampilkan naskah bab sekarang?[/bold cyan]", default=True):
                         console.print(Panel(Markdown(prose), title=f"📖 Naskah Bab {ch_num}: {ch_title}", border_style="blue"))
                     return
                 except Exception as e:
                     status_ctx.stop()
                     console.print(f"[bold red]❌ Terjadi kendala saat melanjutkan Beat:[/bold red] {e}")
-                    if not Confirm.ask("[bold yellow]🔄 Coba lagi dari Beat yang tertunda sekarang? (Beat sebelumnya tetap aman)[/bold yellow]", default=True):
+                    if not Confirm.ask("[bold yellow]🔄 Coba lagi dari Beat yang tertunda sekarang?[/bold yellow]", default=True):
                         return
-
-    # Check if chapter already drafted
-    existing = project.get_chapter(ch_num)
-    if existing:
-        existing_words = len(existing.split())
-        console.print(f"\n[bold yellow]ℹ️ Bab {ch_num} sudah memiliki naskah tersimpan ({existing_words} kata).[/bold yellow]")
-        console.print("  [bold green]1.[/bold green] ✨ Poles / Perpanjang / Edit Naskah Bab Ini dengan Instruksi Bebas (Tanpa Generate dari Awal)")
-        console.print("  [bold cyan]2.[/bold cyan] 🛠️ Buka Studio Rencana Bab & Beat (Edit Bab / Beat / Tulis Ulang)")
-        console.print("  [bold magenta]3.[/bold magenta] 🔄 Rancang Ulang Beat & Tulis Ulang Bab Ini (Sesuai Karakter & Outline Terbaru)")
-        console.print("  [bold white]4.[/bold white] 📖 Baca Naskah Bab Ini Sekarang")
-        console.print("  [bold red]5.[/bold red] 🚪 Batal / Kembali")
-        ex_choice = Prompt.ask("\n[bold green]Pilih aksi (1-5)[/bold green]", choices=["1", "2", "3", "4", "5"], default="1")
-        if ex_choice == "5":
-            return
-        elif ex_choice == "4":
-            console.print(Panel(Markdown(existing), title=f"📖 Naskah Bab {ch_num}: {ch_title} ({existing_words} kata)", border_style="blue"))
-            return
-        elif ex_choice == "3":
-            beats_f = project.get_chapter_beats_file(ch_num)
-            if beats_f.exists():
-                beats_f.unlink()
-            project.clear_chapter_beat_progress(ch_num)
-            console.print(f"[bold cyan]🔄 Cache Beat lama Bab {ch_num} dihapus. Merancang ulang Beat sesuai karakter & outline terbaru...[/bold cyan]")
-        elif ex_choice == "1":
-            user_notes = Prompt.ask(
-                "[bold yellow]Tulis instruksi revisi / perpanjangan untuk Bab ini[/bold yellow]",
-                default="Perpanjang adegan secara mendalam, tambahkan deskripsi atmosferik panca indera, monolog batin, dan dialog yang lebih hidup sehingga pembaca benar-benar masuk ke dalam cerita",
-            )
-            audit_data = project.get_chapter_audit(ch_num) or {
-                "pacing_and_style_critique": "Perkaya kedalaman deskripsi sastra, atmosfer ruang, dan imersi emosi tokoh.",
-                "continuity_issues": ["Tidak ada inkonsistensi"],
-                "actionable_suggestions": [user_notes],
-            }
-            writer = WriterAgent(llm)
-            with console.status(f"[bold magenta]✨ Memoles & memperkaya naskah Bab {ch_num} tanpa menghapus kerangka cerita...[/bold magenta]"):
-                revised = writer.revise_chapter(
-                    project=project,
-                    chapter_info=ch_info,
-                    current_prose=existing,
-                    audit_data=audit_data,
-                    user_notes=user_notes,
-                )
-            new_words = len(revised.split())
-            console.print(f"\n[bold green]✓ Bab {ch_num}: {ch_title} berhasil dipoles & diperkaya! ({new_words} kata)[/bold green]\n")
-            if Confirm.ask("[bold cyan]Tampilkan naskah hasil polesan sekarang?[/bold cyan]", default=True):
-                console.print(Panel(Markdown(revised), title=f"✨ Bab {ch_num} (Hasil Polesan): {ch_title}", border_style="green"))
-            return
 
     planner = ScenePlannerAgent(llm)
     saved_beats = project.get_chapter_beats(ch_num)
@@ -303,20 +168,16 @@ def write_chapter_flow(project: NovelProject, llm: LLMClient) -> None:
 
     if saved_beats:
         beats = ScenePlannerAgent.normalize_beats(saved_beats, chapter_info=ch_info)
-        console.print(
-            f"[bold green]✓ Memuat {len(beats)} Scene Beats tersimpan untuk Bab {ch_num} "
-            f"(Data aman, tidak di-generate ulang dari awal).[/bold green]"
-        )
     else:
         custom_direction = Prompt.ask(
-            "\n[bold yellow]Arahan Bebas / Skenario Khusus Bab Ini[/bold yellow] [dim](opsional, atau ketik 'b' untuk Kembali)[/dim]",
+            "\n[bold yellow]Catatan / Arahan Khusus Penulis untuk Bab Ini[/bold yellow] [dim](opsional, atau 'b' untuk Kembali)[/dim]",
             default="",
         ).strip()
-        if custom_direction.lower() in ("b", "batal", "kembali", "back"):
+        if custom_direction.lower() in ("b", "batal", "kembali", "back", "0"):
             return
         while True:
             try:
-                with console.status(f"[bold cyan]📋 Scene Planner Agent sedang merancang ketukan adegan (beats) untuk Bab {ch_num}...[/bold cyan]"):
+                with console.status(f"[bold cyan]📋 Merancang ketukan adegan (beats) untuk Bab {ch_num}...[/bold cyan]"):
                     beats = planner.generate_beats(project, ch_info, custom_direction=custom_direction)
                 break
             except Exception as e:
@@ -324,105 +185,130 @@ def write_chapter_flow(project: NovelProject, llm: LLMClient) -> None:
                 if not Confirm.ask("[bold yellow]🔄 Coba lagi merancang Beat sekarang?[/bold yellow]", default=True):
                     return
 
-    # Interactive Beat, Chapter Plan, Character & Writing Mode Loop
-    beat_by_beat_mode = False
+    # Clean, simple per-beat menu
     while True:
-        ch_title = ch_info.get("title", f"Bab {ch_num}")
+        existing = project.get_chapter(ch_num)
         display_beats_list(beats)
 
-        console.print("\n[bold cyan]Pilih Eksekusi Naskah atau Edit Bebas Sebelum Generate:[/bold cyan]")
-        console.print("  [bold green]1.[/bold green] ⚡ [bold]Generate Naskah Bab Sekarang — Mode Satset[/bold] [dim](1x Proses: Bab Panjang, Deskriptif, Imersif + Self-Audit)[/dim]")
-        console.print("  [bold white]2.[/bold white] ✍️ [bold]Generate Per Beat — Mode Ekstra Panjang[/bold] [dim](Susun tiap Beat satu per satu untuk bab super panjang)[/dim]")
-        console.print("  [bold yellow]3.[/bold yellow] 📌 [bold]Edit Rencana Bab Ini[/bold] (Ubah Judul Bab, POV, Lokasi, Ringkasan Cerita, Konflik, Ending Bab)")
-        console.print("  [bold yellow]4.[/bold yellow] 🛠️ [bold]Edit / Tambah / Hapus Scene Beat Bab Ini[/bold] (Bebas ubah isi adegan, dialog, konflik tiap beat)")
-        console.print("  [bold yellow]5.[/bold yellow] 👥 [bold]Edit Karakter, Cerita Utama, World Bible, atau Bab Lain[/bold]")
-        console.print("  [bold yellow]6.[/bold yellow] 💬 [bold]Tambah / Ubah Arahan Khusus Penulis untuk Bab Ini[/bold]" + (f" [green](Aktif: '{custom_direction[:40]}...')[/green]" if custom_direction else ""))
-        console.print("  [bold cyan]7.[/bold cyan] 📝 Buat Beat Manual Sendiri dari Awal (100% Tanpa AI)")
-        console.print("  [bold magenta]8.[/bold magenta] 🔄 Minta AI Merancang Ulang Beat Bab Ini")
-        console.print("  [bold red]9.[/bold red] 🚪 Batal / Kembali")
+        console.print("\n[bold cyan]Menu Penulisan Bab (Per-Beat & Hemat Token):[/bold cyan]")
+        if existing:
+            console.print(f"  [dim]Status naskah: Sudah ada ({len(existing.split())} kata)[/dim]")
+        console.print("  [bold green]1.[/bold green] ✍️ [bold]Generate / Tulis Bab Per-Beat[/bold] (Dengan catatan user, tersimpan tiap Beat)")
+        console.print("  [bold yellow]2.[/bold yellow] 🎯 [bold]Generate Ulang 1 Beat Tertentu[/bold] (Hanya ulangi 1 Beat yang kurang pas dengan catatan)")
+        console.print("  [bold magenta]3.[/bold magenta] 🔄 [bold]Rancang Ulang Daftar Beat Bab Ini[/bold] (Dengan catatan baru)")
+        console.print("  [bold white]4.[/bold white] 📖 Baca Naskah Bab Ini")
+        console.print("  [bold cyan]0.[/bold cyan] 🔙 Kembali")
 
         action = Prompt.ask(
-            "\n[bold green]Pilih aksi (1-9)[/bold green]",
-            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9"],
-            default="1",
+            "\n[bold green]Pilih aksi (0-4)[/bold green]",
+            choices=["0", "1", "2", "3", "4"],
+            default="1" if not existing else "0",
         )
 
-        if action == "1":
-            beat_by_beat_mode = False
-            break
-        elif action == "2":
-            beat_by_beat_mode = True
-            break
-        elif action == "3":
-            from cli.wizard import edit_single_chapter_plan_interactively
-            ch_info = edit_single_chapter_plan_interactively(project, ch_info)
-            ch_title = ch_info.get("title", f"Bab {ch_num}")
-        elif action == "4":
-            beats = edit_beats_interactively(project, ch_num, beats)
-        elif action == "5":
-            from cli.wizard import manage_foundation_studio
-            manage_foundation_studio(project, llm)
-            # Refresh ch_info in case user edited this chapter inside the studio
-            for c in project.outline.get("chapters", []):
-                if c.get("chapter_number") == ch_num:
-                    ch_info = c
-                    break
-        elif action == "6":
-            custom_direction = Prompt.ask(
-                "[bold yellow]Arahan Bebas / Skenario Khusus untuk Bab Ini[/bold yellow]",
-                default=custom_direction,
-            ).strip()
-            console.print("[bold green]✓ Arahan khusus bab berhasil disimpan untuk proses penulisan![/bold green]")
-        elif action == "7":
-            beats = create_manual_beats_flow(project, ch_num)
-        elif action == "8":
-            custom_direction = Prompt.ask("[bold yellow]Masukkan arahan/skenario untuk pembuatan ulang Beat oleh AI[/bold yellow]", default=custom_direction)
-            with console.status(f"[bold cyan]📋 Scene Planner Agent sedang merancang ulang beats untuk Bab {ch_num}...[/bold cyan]"):
-                beats = planner.generate_beats(project, ch_info, custom_direction=custom_direction)
-        elif action == "9":
+        if action == "0":
             return
 
-    # Step 2: Prose Writer Agent (with in-place retry so progress is never lost)
+        elif action == "4":
+            if existing:
+                console.print(Panel(Markdown(existing), title=f"📖 Naskah Bab {ch_num}: {ch_title}", border_style="blue"))
+            else:
+                console.print("[yellow]Bab ini belum ditulis.[/yellow]")
+
+        elif action == "3":
+            note_b = Prompt.ask(
+                "[bold yellow]Catatan untuk rancangan Beat baru (Enter untuk default, 'b' Batal)[/bold yellow]",
+                default=custom_direction,
+            ).strip()
+            if note_b.lower() in ("b", "0", "kembali"):
+                continue
+            custom_direction = note_b
+            while True:
+                try:
+                    with console.status(f"[bold cyan]📋 Merancang ulang Beat Bab {ch_num}...[/bold cyan]"):
+                        beats = planner.generate_beats(project, ch_info, custom_direction=custom_direction)
+                    project.clear_chapter_beat_progress(ch_num)
+                    console.print("[bold green]✓ Daftar Beat berhasil dirancang ulang![/bold green]")
+                    break
+                except Exception as e:
+                    console.print(f"[bold red]❌ Gagal:[/bold red] {e}")
+                    if not Confirm.ask("[bold yellow]🔄 Coba lagi?[/bold yellow]", default=True):
+                        break
+
+        elif action == "2":
+            raw_b = Prompt.ask(
+                f"[bold cyan]Pilih nomor Beat yang ingin di-generate ulang (1-{len(beats)}, atau 'b' Kembali)[/bold cyan]",
+                default="b",
+            ).strip()
+            if raw_b.lower() in ("b", "0", "kembali", ""):
+                continue
+            if not raw_b.isdigit() or not (1 <= int(raw_b) <= len(beats)):
+                console.print("[red]Nomor Beat tidak valid.[/red]")
+                continue
+            beat_idx = int(raw_b)
+            user_note = Prompt.ask(
+                f"[bold yellow]Catatan perbaikan untuk Beat {beat_idx} (atau 'b' Kembali)[/bold yellow]"
+            ).strip()
+            if not user_note or user_note.lower() in ("b", "0", "kembali"):
+                continue
+            writer = WriterAgent(llm)
+            while True:
+                try:
+                    with console.status(f"[bold magenta]🎯 Menulis ulang Beat {beat_idx}/{len(beats)} sesuai catatan Anda...[/bold magenta]"):
+                        prose = writer.regenerate_single_beat(
+                            project=project,
+                            chapter_info=ch_info,
+                            beats=beats,
+                            beat_index=beat_idx,
+                            user_note=user_note,
+                        )
+                    console.print(f"[bold green]✓ Beat {beat_idx} berhasil diperbarui! (Total bab: {len(prose.split())} kata)[/bold green]")
+                    if Confirm.ask("[bold cyan]Tampilkan naskah bab sekarang?[/bold cyan]", default=False):
+                        console.print(Panel(Markdown(prose), title=f"📖 Naskah Bab {ch_num}: {ch_title}", border_style="blue"))
+                    break
+                except Exception as e:
+                    console.print(f"[bold red]❌ Gagal menulis ulang Beat {beat_idx}:[/bold red] {e}")
+                    if not Confirm.ask("[bold yellow]🔄 Coba lagi Beat ini?[/bold yellow]", default=True):
+                        break
+
+        elif action == "1":
+            user_note = Prompt.ask(
+                "[bold yellow]Catatan / arahan penulis untuk penulisan bab ini (Enter jika langsung, 'b' Batal)[/bold yellow]",
+                default=custom_direction,
+            ).strip()
+            if user_note.lower() in ("b", "0", "kembali"):
+                continue
+            custom_direction = user_note
+            break
+
+    # Execute per-beat writing (with in-place retry so progress is never lost)
     writer = WriterAgent(llm)
     while True:
         try:
-            if beat_by_beat_mode and len(beats) > 1:
-                console.print(f"\n[bold magenta]✍️ Prose Writer Agent menyusun Bab {ch_num} secara berurutan ({len(beats)} Beats)...[/bold magenta]")
-                status_ctx = console.status("[bold magenta]Menyiapkan penulisan Beat 1...[/bold magenta]")
-                status_ctx.start()
-                try:
-                    def on_beat_progress(idx: int, total: int, beat: Dict[str, Any]) -> None:
-                        b_name = beat.get("beat_name", f"Beat {idx}")
-                        status_ctx.update(f"[bold magenta]✍️ Menyusun Beat {idx}/{total}: \"{b_name}\" (Tanpa Sensor)...[/bold magenta]")
-                        console.print(f"  [cyan]→ Menyusun Beat {idx}/{total}:[/cyan] [bold white]{b_name}[/bold white]")
+            console.print(f"\n[bold magenta]✍️ Menyusun Bab {ch_num} per Beat ({len(beats)} Beats)...[/bold magenta]")
+            status_ctx = console.status("[bold magenta]Menyiapkan penulisan Beat 1...[/bold magenta]")
+            status_ctx.start()
+            try:
+                def on_beat_progress(idx: int, total: int, beat: Dict[str, Any]) -> None:
+                    b_name = beat.get("beat_name", f"Beat {idx}")
+                    status_ctx.update(f"[bold magenta]✍️ Menyusun Beat {idx}/{total}: \"{b_name}\"...[/bold magenta]")
+                    console.print(f"  [cyan]→ Menyusun Beat {idx}/{total}:[/cyan] [bold white]{b_name}[/bold white]")
 
-                    prose = writer.write_chapter(
-                        project=project,
-                        chapter_info=ch_info,
-                        beats=beats,
-                        custom_instructions=custom_direction,
-                        beat_by_beat=True,
-                        progress_callback=on_beat_progress,
-                    )
-                finally:
-                    status_ctx.stop()
-            else:
-                with console.status(f"[bold magenta]⚡ Prose Writer + Self-Audit sedang menyusun & memoles Bab {ch_num} (1x proses)...[/bold magenta]"):
-                    prose = writer.write_chapter(
-                        project=project,
-                        chapter_info=ch_info,
-                        beats=beats,
-                        custom_instructions=custom_direction,
-                        beat_by_beat=False,
-                    )
+                prose = writer.write_chapter(
+                    project=project,
+                    chapter_info=ch_info,
+                    beats=beats,
+                    custom_instructions=custom_direction,
+                    beat_by_beat=True,
+                    progress_callback=on_beat_progress,
+                )
+            finally:
+                status_ctx.stop()
             break
         except Exception as e:
             console.print(f"\n[bold red]❌ Terjadi kendala saat menyusun Bab {ch_num}:[/bold red] {e}")
             prog_now = project.get_chapter_beat_progress(ch_num)
             if prog_now:
-                console.print(
-                    f"[bold green]💾 Progres Beat 1..{prog_now.get('completed_beats')} sudah tersimpan aman.[/bold green]"
-                )
+                console.print(f"[bold green]💾 Progres Beat 1..{prog_now.get('completed_beats')} sudah tersimpan aman.[/bold green]")
             if not Confirm.ask("[bold yellow]🔄 Coba lagi sekarang tanpa mengulang dari awal?[/bold yellow]", default=True):
                 return
 

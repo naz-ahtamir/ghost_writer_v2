@@ -285,6 +285,7 @@ class WriterAgent:
 
             chapter_prose = "\n\n".join(accumulated_parts)
             project.save_chapter(chap_num, chapter_prose, beats=normalized_beats)
+            project.save_chapter_parts(chap_num, accumulated_parts)
             project.clear_chapter_beat_progress(chap_num)
             return chapter_prose
 
@@ -323,4 +324,112 @@ class WriterAgent:
         if audit_data:
             self.last_audit = audit_data
             project.save_chapter_audit(chap_num, audit_data)
+        return chapter_prose
+
+    def regenerate_single_beat(
+        self,
+        project: NovelProject,
+        chapter_info: Dict[str, Any],
+        beats: List[Dict[str, Any]],
+        beat_index: int,
+        user_note: str = "",
+    ) -> str:
+        """Regenerate ONLY one specific beat (1-based index) with user_note and splice into the chapter."""
+        chap_num = chapter_info.get("chapter_number", 1)
+        chap_title = chapter_info.get("title", f"Bab {chap_num}")
+        meta = project.metadata
+        lang = meta.get("language", "Indonesian")
+        target_words = max(2500, int(meta.get("target_words_per_chapter", 3000)))
+
+        normalized_beats = ScenePlannerAgent.normalize_beats(beats, chapter_info=chapter_info)
+        total_beats = len(normalized_beats)
+        if not (1 <= beat_index <= total_beats):
+            raise ValueError(f"Nomor beat harus antara 1 hingga {total_beats}.")
+
+        beat = normalized_beats[beat_index - 1]
+        words_per_beat = max(650, int(target_words / total_beats))
+        characters_context, world_context = self._build_contexts(project)
+        continuity_summary = project.get_continuity_summary(up_to_chapter=chap_num)
+        beats_blueprint = self.format_beats_blueprint(normalized_beats, target_words=target_words)
+        system_prompt = WRITER_SYSTEM.format(language=lang)
+
+        parts = project.get_chapter_parts(chap_num)
+        if not parts or len(parts) != total_beats:
+            # Fallback if chapter was written in single-pass mode
+            existing = project.get_chapter(chap_num) or ""
+            parts = [existing] + [""] * (total_beats - 1) if existing else [""] * total_beats
+
+        if beat_index == 1:
+            heading_instruction = (
+                f"Awali langsung dengan judul bab `# Bab {chap_num}: {chap_title}` "
+                f"lalu tulis paragraf pembuka Beat 1."
+            )
+            prev_text = "(Ini adalah Beat 1 / awal bab. Belum ada paragraf sebelumnya di bab ini.)"
+        else:
+            heading_instruction = (
+                "JANGAN menulis ulang judul `# Bab ...`. Lanjutkan langsung paragraf baru "
+                "yang menyambung mulus dari kalimat terakhir Beat sebelumnya."
+            )
+            prev_joined = "\n\n".join(p for p in parts[: beat_index - 1] if p.strip())
+            words_prev = prev_joined.split()
+            prev_text = f"...{' '.join(words_prev[-450:])}" if len(words_prev) > 450 else (prev_joined or "(Lanjutkan cerita)")
+
+        next_beat_hint = (
+            f"Beat {beat_index + 1}: {normalized_beats[beat_index].get('beat_name', '')}"
+            if beat_index < total_beats
+            else "Akhir Bab"
+        )
+        custom_note = (
+            user_note.strip()
+            or "Tulis ulang Beat ini agar lebih hidup, deskriptif, imersif, dan sesuai alur."
+        )
+
+        beat_prompt = WRITER_BEAT_TEMPLATE.format(
+            chapter_number=chap_num,
+            chapter_title=chap_title,
+            language=lang,
+            genre=meta.get("genre", "Fiksi"),
+            tone=meta.get("tone", "Realistis"),
+            premise=meta.get("premise", ""),
+            chapter_summary=chapter_info.get("summary", ""),
+            beat_number=beat_index,
+            total_beats=total_beats,
+            pov_character=chapter_info.get("pov_character", "Protagonis"),
+            setting=chapter_info.get("setting", ""),
+            conflict=chapter_info.get("conflict", ""),
+            turning_point=chapter_info.get("turning_point", ""),
+            custom_instructions=custom_note,
+            all_beats_overview=beats_blueprint,
+            beat_name=beat.get("beat_name", f"Adegan {beat_index}"),
+            scene_events=beat.get("scene_events", beat.get("goal", "")),
+            goal=beat.get("goal", ""),
+            obstacle=beat.get("obstacle", ""),
+            sensory_details=beat.get("sensory_details", ""),
+            emotional_shift=beat.get("emotional_shift", ""),
+            target_beat_words=words_per_beat,
+            characters_context=characters_context,
+            world_context=world_context,
+            continuity_summary=continuity_summary,
+            previous_beats_text=prev_text,
+            heading_instruction=heading_instruction,
+            next_beat_hint=next_beat_hint,
+        )
+
+        raw_beat = self.llm.generate(
+            prompt=beat_prompt,
+            system_instruction=system_prompt,
+            temperature=0.75,
+        )
+
+        if beat_index == 1:
+            cleaned = self._strip_planning_and_meta(raw_beat, chap_num, is_first_part=True)
+            if not cleaned.startswith("#"):
+                cleaned = f"# Bab {chap_num}: {chap_title}\n\n{cleaned}"
+        else:
+            cleaned = self._clean_beat_continuation(raw_beat, chap_num, chap_title)
+
+        parts[beat_index - 1] = cleaned
+        chapter_prose = "\n\n".join(p for p in parts if p.strip())
+        project.save_chapter(chap_num, chapter_prose, beats=normalized_beats)
+        project.save_chapter_parts(chap_num, parts)
         return chapter_prose
